@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  agv-control-system:
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile
+    ports:
+      - "8113:8113"
+    volumes:
+      - ..:/app
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    networks:
+      - agv-network
+
+networks:
+  agv-network:
+    driver: bridge
