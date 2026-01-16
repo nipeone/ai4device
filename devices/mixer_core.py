@@ -5,7 +5,7 @@
 import requests
 import time
 from typing import Dict, Any, List, Optional
-from .base import RestAPIControlledDevice
+from .base import RestAPIControlledDevice, DeviceStatus
 
 
 class MixerController(RestAPIControlledDevice):
@@ -17,39 +17,47 @@ class MixerController(RestAPIControlledDevice):
     def __init__(self, device_id: str = "01", api_base_url: str = "http://127.0.0.1:4669"):
         super().__init__("restapi_mixer_" + device_id, device_id, api_base_url)
         self.current_task_id = None
-        self.current_task_status = None
+        self.current_task_status = None # 由get_task_info获取
         self.task_info_cache = {}
+        self.api_headers = {
+            "Content-Type": "application/json",
+            "Authorization": ""
+        }
 
     def connect(self):
-        """连接配料设备（检测API是否可达）"""
+        """连接配料设备（检测API是否可达），获取Token"""
         try:
+            payload = {
+                "username": "admin",
+                "password": "admin"
+            }
             # 尝试获取任务信息来检测连接
-            response = requests.get(f"{self.api_base_url}/api/GetTaskInfo", timeout=5)
-            # 即使返回错误，只要能够通信就认为连接成功
-            self.is_connected = True
-            self.message = "配料设备连接成功"
-            return True
-        except requests.exceptions.RequestException as e:
-            # 如果API不存在健康检查端点，尝试简单的GET请求
-            try:
-                # 尝试调用GetTaskInfo接口
-                response = requests.post(
-                    f"{self.api_base_url}/api/GetTaskInfo",
-                    json={},
-                    timeout=5
-                )
+            response = requests.post(f"{self.api_base_url}/api/Token", json=payload, timeout=5)
+            if response.status_code == 200:
+                self.api_token = response.json()["access_token"]
+                self.api_token_type = response.json()["token_type"]
+                self.api_headers["Authorization"] = f"{self.api_token_type} {self.api_token}"
                 self.is_connected = True
                 self.message = "配料设备连接成功"
+                self.status = DeviceStatus.connected
                 return True
-            except:
+            else:
                 self.is_connected = False
-                self.message = f"配料设备连接失败: {str(e)}"
+                self.message = f"获取Token失败，状态码：{response.status_code}"
                 return False
+        except requests.exceptions.RequestException as e:
+            self.is_connected = False
+            self.message = f"获取Token失败: {str(e)}"
+            return False
 
     def disconnect(self):
         """断开配料设备连接"""
         self.is_connected = False
+        self.api_token = None
+        self.api_token_type = None
+        self.api_headers = {}
         self.message = "配料设备已断开连接"
+        self.status = DeviceStatus.disconnected
 
     def get_task_info(self, task_id: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -68,7 +76,8 @@ class MixerController(RestAPIControlledDevice):
             response = requests.post(
                 f"{self.api_base_url}/api/GetTaskInfo",
                 json=payload,
-                timeout=10
+                timeout=10,
+                headers=self.api_headers
             )
             response.raise_for_status()
             data = response.json()
@@ -122,7 +131,8 @@ class MixerController(RestAPIControlledDevice):
             response = requests.post(
                 f"{self.api_base_url}/api/AddTask",
                 json=payload,
-                timeout=30
+                timeout=30,
+                headers=self.api_headers
             )
             response.raise_for_status()
             data = response.json()
@@ -175,7 +185,8 @@ class MixerController(RestAPIControlledDevice):
             response = requests.post(
                 f"{self.api_base_url}/api/StartTask",
                 json=payload,
-                timeout=30
+                timeout=30,
+                headers=self.api_headers
             )
             response.raise_for_status()
             data = response.json()
@@ -183,7 +194,7 @@ class MixerController(RestAPIControlledDevice):
             # 更新当前任务状态
             self.current_task_id = task_id
             if "code" in data and data["code"] == 200:
-                self.current_task_status = "running"
+                self.status = DeviceStatus.running
             
             self.message = f"启动任务成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
@@ -208,7 +219,8 @@ class MixerController(RestAPIControlledDevice):
             response = requests.post(
                 f"{self.api_base_url}/api/StopTask",
                 json=payload,
-                timeout=30
+                timeout=30,
+                headers=self.api_headers
             )
             response.raise_for_status()
             data = response.json()
@@ -216,7 +228,7 @@ class MixerController(RestAPIControlledDevice):
             # 更新当前任务状态
             if task_id == self.current_task_id:
                 if "code" in data and data["code"] == 200:
-                    self.current_task_status = "paused"
+                    self.status = DeviceStatus.paused
             
             self.message = f"暂停任务成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
@@ -241,7 +253,8 @@ class MixerController(RestAPIControlledDevice):
             response = requests.post(
                 f"{self.api_base_url}/api/CancelTask",
                 json=payload,
-                timeout=30
+                timeout=30,
+                headers=self.api_headers
             )
             response.raise_for_status()
             data = response.json()
@@ -249,8 +262,9 @@ class MixerController(RestAPIControlledDevice):
             # 更新当前任务状态
             if task_id == self.current_task_id:
                 if "code" in data and data["code"] == 200:
-                    self.current_task_status = "cancelled"
+                    self.status = DeviceStatus.cancelled
                     self.current_task_id = None
+                    self.current_task_status = None
             
             self.message = f"取消任务成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
@@ -300,6 +314,8 @@ class MixerController(RestAPIControlledDevice):
 
     def get_result(self) -> dict:
         """获取设备结果"""
+        if self.current_task_id: 
+            self.get_task_info(self.current_task_id)
         return self.result if self.result else {
             "status": "idle",
             "message": "无操作结果"

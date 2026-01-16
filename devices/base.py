@@ -3,6 +3,7 @@ import requests  # REST API库（需安装：pip install requests）
 # PLC/Modbus可根据实际库替换（如pymodbus、pycomm3）
 from datetime import datetime
 import time
+from enum import Enum
 
 # PLC通信库（snap7）
 try:
@@ -13,6 +14,19 @@ except ImportError:
     client = None
     Area = None
     SNAP7_AVAILABLE = False
+
+class DeviceStatus(Enum):
+    idle = "就绪"
+    connected = "已连接"
+    disconnected = "未连接"
+    running = "运行中"
+    paused = "暂停"
+    cancelled = "已取消"
+    completed = "已完成"
+    error = "错误"
+    timeout = "超时"
+    abnormal = "异常"
+    unknown = "未知"
 
 # ===================== 1. 设备基类（所有设备的通用接口） =====================
 class BaseDevice(ABC):
@@ -25,6 +39,7 @@ class BaseDevice(ABC):
         self.is_connected = False             # 设备连接状态
         self.result = None                    # 设备结果
         self.message = None                   # 设备消息
+        self.status = DeviceStatus.unknown    # 设备状态: 默认未知
 
     @abstractmethod
     def connect(self):
@@ -244,19 +259,20 @@ class PLCControlledDevice(BaseDevice):
             "connected": self.is_connected,
             "ip": self.plc_ip,
             "port": self.plc_port,
-            "message": self.message
+            "message": self.message,
+            "status": self.status
         }
 
     def get_result(self) -> dict:
         """获取设备结果"""
         return self.result if self.result else {
-            "status": "idle",
-            "message": "无操作结果"
+            "status": self.status,
+            "message": self.message
         }
 
     def get_message(self) -> str:
         """获取设备消息"""
-        return self.message if self.message else "PLC设备就绪"
+        return self.message
 
 class ModbusControlledDevice(BaseDevice):
     """Modbus控制设备的通用逻辑"""
@@ -322,7 +338,9 @@ class RestAPIControlledDevice(BaseDevice):
     def __init__(self, device_name: str, device_id: str, api_base_url: str):
         super().__init__(device_name, "RESTAPI", device_id)
         self.api_base_url = api_base_url  # API基础地址：如 "http://192.168.1.100/api/v1"
-        self.api_token = None             # API认证令牌（按需添加）
+        self.api_token = None             # API认证令牌
+        self.api_token_type = None        # API认证令牌类型
+        self.api_headers = {}             # API认证头部
 
     def connect(self):
         """REST API设备通用连接逻辑（实际为认证/可达性检测）"""
