@@ -9,12 +9,6 @@ from apis.task_api import router as task_router
 from apis.system_api import router as system_router
 from apis.mixer_api import router as mixer_router
 from logger import sys_logger as logger
-from devices.plc_manager import PLCManager
-from devices.flow_manager import FlowManager
-from devices.door_core import DoorController
-from devices.centrifuge_core import ModbusSender
-from devices.furnace_core import OvenDriver
-
 from devices.plc_manager import plc_mgr
 
 # ==========================================
