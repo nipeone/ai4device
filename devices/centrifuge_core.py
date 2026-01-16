@@ -5,12 +5,17 @@ import binascii
 import time
 from .base import ModbusControlledDevice
 from utils import CENT_CMDS, CENT_FAULT_MAP, CENT_RUN_MAP, CENT_ROTOR_MAP, CENT_DOOR_MAP, cent_format_time
+import config
 
 
 class Centrifuge(ModbusControlledDevice):
     """Modbus控制的离心机设备"""
     
-    def __init__(self, device_id: str = "01", host: str = "192.168.0.140", port: int = 8000, timeout: int = 5):
+    def __init__(self, device_id: str = "01", host: str = None, port: int = None, timeout: int = None):
+        # 从环境变量获取配置，如果没有提供参数则使用默认值
+        host = host or config.CENTRIFUGE_HOST
+        port = port or config.CENTRIFUGE_PORT
+        timeout = timeout or config.CENTRIFUGE_TIMEOUT
         super().__init__("modbus_centrifuge_" + device_id, device_id, 1, port)
         self.host = host
         self.timeout = timeout

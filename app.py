@@ -10,6 +10,7 @@ from apis.system_api import router as system_router
 from apis.mixer_api import router as mixer_router
 from logger import sys_logger as logger
 from devices.plc_manager import plc_mgr
+import config  # 导入配置模块以加载环境变量
 
 # ==========================================
 # 应用生命周期管理

@@ -2,12 +2,15 @@
 import zmq
 import time
 from .base import SocketControlledDevice
+import config
 
 
 class DoorController(SocketControlledDevice):
     """Socket（ZMQ）控制的防护门设备"""
     
-    def __init__(self, device_id: str = "01", target_address: str = "tcp://127.0.0.1:49202"):
+    def __init__(self, device_id: str = "01", target_address: str = None):
+        # 从环境变量获取配置，如果没有提供参数则使用默认值
+        target_address = target_address or config.DOOR_TARGET_ADDRESS
         # ZMQ Socket通信
         super().__init__("socket_door_" + device_id, device_id, target_address)
         self.target_address = target_address

@@ -5,6 +5,7 @@ PLC管理器模块
 """
 from .base import PLCControlledDevice
 from logger import sys_logger as logger
+import config
 
 
 class PLCManager(PLCControlledDevice):
@@ -12,7 +13,10 @@ class PLCManager(PLCControlledDevice):
     PLC管理器类
     继承自PLCControlledDevice，提供完整的PLC控制功能
     """
-    def __init__(self, ip="192.168.0.205", port=102):
+    def __init__(self, ip=None, port=None):
+        # 从环境变量获取配置，如果没有提供参数则使用默认值
+        ip = ip or config.PLC_IP
+        port = port or config.PLC_PORT
         # 调用父类初始化，设备名称和ID使用默认值
         super().__init__("plc_manager_01", "01", ip, port)
         self.ip = ip  # 保持向后兼容的属性名

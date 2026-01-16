@@ -3,15 +3,20 @@ import zmq
 import json
 import time
 from .base import SocketControlledDevice
+import config
 
 
 class OvenDriver(SocketControlledDevice):
     """Socket（ZMQ）控制的高温炉设备"""
     
     def __init__(self, device_id: str = "01", 
-                 req_addr: str = "tcp://127.0.0.1:49206",
-                 sub_addr: str = "tcp://127.0.0.1:49200",
-                 ctrl_addr: str = "tcp://127.0.0.1:49201"):
+                 req_addr: str = None,
+                 sub_addr: str = None,
+                 ctrl_addr: str = None):
+        # 从环境变量获取配置，如果没有提供参数则使用默认值
+        req_addr = req_addr or config.FURNACE_REQ_ADDR
+        sub_addr = sub_addr or config.FURNACE_SUB_ADDR
+        ctrl_addr = ctrl_addr or config.FURNACE_CTRL_ADDR
         # ZMQ Socket通信，使用req_addr作为主地址
         super().__init__("socket_oven_" + device_id, device_id, req_addr)
         self.REQ_ADDR = req_addr

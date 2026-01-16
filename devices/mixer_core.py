@@ -6,6 +6,7 @@ import requests
 import time
 from typing import Dict, Any, List, Optional
 from .base import RestAPIControlledDevice, DeviceStatus
+import config
 
 
 class MixerController(RestAPIControlledDevice):
@@ -14,11 +15,17 @@ class MixerController(RestAPIControlledDevice):
     基于配料设备API文档实现所有功能
     """
     
-    def __init__(self, device_id: str = "01", api_base_url: str = "http://127.0.0.1:4669"):
+    def __init__(self, device_id: str = "01", api_base_url: str = None, username: str = None, password: str = None):
+        # 从环境变量获取配置，如果没有提供参数则使用默认值
+        api_base_url = api_base_url or config.MIXER_API_BASE_URL
+        username = username or config.MIXER_USERNAME
+        password = password or config.MIXER_PASSWORD
         super().__init__("restapi_mixer_" + device_id, device_id, api_base_url)
         self.current_task_id = None
         self.current_task_status = None # 由get_task_info获取
         self.task_info_cache = {}
+        self.username = username
+        self.password = password
         self.api_headers = {
             "Content-Type": "application/json",
             "Authorization": ""
@@ -28,8 +35,8 @@ class MixerController(RestAPIControlledDevice):
         """连接配料设备（检测API是否可达），获取Token"""
         try:
             payload = {
-                "username": "admin",
-                "password": "admin"
+                "username": self.username,
+                "password": self.password
             }
             # 尝试获取任务信息来检测连接
             response = requests.post(f"{self.api_base_url}/api/Token", json=payload, timeout=5)
