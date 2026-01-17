@@ -1,4 +1,3 @@
-# 文件名：door_core.py
 import zmq
 import time
 from .base import SocketControlledDevice
@@ -196,4 +195,4 @@ class DoorController(SocketControlledDevice):
 
 
 # 创建全局实例（保持向后兼容）
-door_ctrl = DoorController()
+door_controller = DoorController()

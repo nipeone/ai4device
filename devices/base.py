@@ -160,9 +160,30 @@ class PLCControlledDevice(BaseDevice):
             self.is_connected = False
             return False
 
+    def read_m_bytes(self, b)->bytearray:
+        """读取M区字节数据"""
+        if not self.is_connected or not self.client:
+            return bytearray()
+        try:
+            return self.client.read_area(Area.MK, 0, b, 1)
+        except:
+            self.is_connected = False
+            return bytearray()
+
+    def write_m_bytes(self, b:int, v:bytearray)->bool:
+        """写入M区字节数据"""
+        if not self.is_connected or not self.client:
+            return False
+        try:
+            self.client.write_area(Area.MK, 0, b, v)
+            return True
+        except:
+            self.is_connected = False
+            return False
+
     def toggle_m(self, b, i):
         """切换M区位状态: 0->1 或 1->0 (保持模式)"""
-        if not self.try_connect():
+        if not self.connect():
             return False
         try:
             d = self.client.read_area(Area.MK, 0, b, 1)
@@ -178,8 +199,8 @@ class PLCControlledDevice(BaseDevice):
             return False
 
     def pulse_m(self, b, i):
-        """点动控制: 置位1 -> 等待0.5s -> 复位0 (安全模式)"""
-        if not self.try_connect():
+        """M区点动控制: 置位1 -> 等待0.5s -> 复位0 (安全模式)"""
+        if not self.connect():
             return False
 
         try:
@@ -202,15 +223,41 @@ class PLCControlledDevice(BaseDevice):
             self.is_connected = False
             return False
 
-    def write_task(self, tid, st, qty):
-        """写入任务数据到DB3"""
-        if not self.try_connect():
+    def pulse_db(self, db, byte):
+        """DB区点动控制: 置位1 -> 等待0.5s -> 复位0 (安全模式)"""
+        if not self.connect():
             return False
         try:
-            # 设置数据 (tid任务id/st站点/qty生产数量)
-            self.client.write_area(Area.DB, 3, 0, int(tid).to_bytes(2, 'big'))
-            self.client.write_area(Area.DB, 3, 2, int(st).to_bytes(2, 'big'))
-            self.client.write_area(Area.DB, 3, 4, int(qty).to_bytes(2, 'big'))
+            # 1. 置位 (ON)
+            self.client.write_area(Area.DB, db, byte, b'\x01')
+
+            # 2. 延时
+            time.sleep(0.5)
+
+            # 3. 复位 (OFF)
+            self.client.write_area(Area.DB, db, byte, b'\x00')
+            return True
+        except Exception as e:
+            self.is_connected = False
+            return False
+
+    def write_db_int(self, db, byte, value, size=1):
+        """写入DB区数据"""
+        if not self.connect():
+            return False
+        try:
+            self.client.write_area(Area.DB, db, byte, int(value).to_bytes(size, 'big'))
+            return True
+        except Exception as e:
+            self.is_connected = False
+            return False
+
+    def write_db_bytes(self, db, byte, value: bytearray):
+        """写入DB区字节数据, value为bytearray类型"""
+        if not self.connect():
+            return False
+        try:
+            self.client.write_area(Area.DB, db, byte, value)
             return True
         except Exception as e:
             self.is_connected = False
@@ -237,6 +284,16 @@ class PLCControlledDevice(BaseDevice):
         except:
             self.is_connected = False
             return 0
+
+    def read_db_bytes(self, db, byte, size)->bytearray:
+        if not self.is_connected or not self.client:
+            return bytearray()
+        try:
+            d = self.client.read_area(Area.DB, db, byte, size)
+            return d
+        except:
+            self.is_connected = False
+            return bytearray()
 
     def start(self):
         """启动设备（PLC设备通常通过任务控制，此方法可被子类重写）"""
@@ -360,171 +417,3 @@ class RestAPIControlledDevice(BaseDevice):
         """REST API设备通用断开逻辑（无实际连接，仅标记状态）"""
         self.is_connected = False
         print(f"[{self.device_name}] REST API设备断开连接")
-
-# ===================== 3. 具体设备类（实现特有逻辑） =====================
-class RobotArm(PLCControlledDevice):
-    """PLC控制的机械臂（具体设备）"""
-    def __init__(self):
-        # 实例名遵循：控制方式_设备类型_编号
-        super().__init__("plc_robot_arm_01", "01", "192.168.1.20", 502)
-        self.grip_force = 0  # 机械臂特有属性：抓取力
-
-    def start(self):
-        """机械臂启动逻辑（特有）"""
-        if self.is_connected:
-            print(f"[{self.device_name}] 机械臂启动，开始抓取物料")
-            # 实际PLC控制指令：如写入寄存器控制机械臂启动
-
-    def stop(self):
-        """机械臂停止逻辑（特有）"""
-        if self.is_connected:
-            print(f"[{self.device_name}] 机械臂停止，释放物料")
-
-    def get_status(self) -> dict:
-        """获取机械臂状态（特有）"""
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "grip_force": self.grip_force,
-            "position": "X:100,Y:200,Z:50"  # 示例位置信息
-        }
-    
-    def get_result(self) -> dict:
-        return {
-            "status": "success" if self.is_connected else "disconnected",
-            "grip_force": self.grip_force,
-            "position": "X:100,Y:200,Z:50"
-        }
-    
-    def get_message(self) -> str:
-        return f"机械臂状态: {'已连接' if self.is_connected else '未连接'}, 抓取力: {self.grip_force}"
-
-class Centrifuge(ModbusControlledDevice):
-    """Modbus控制的离心机（具体设备）"""
-    def __init__(self):
-        super().__init__("modbus_centrifuge_01", "01", 1, 502)
-        self.speed = 0  # 离心机特有属性：转速
-
-    def start(self):
-        if self.is_connected:
-            self.speed = 3000  # 设置转速
-            print(f"[{self.device_name}] 离心机启动，转速：{self.speed} rpm")
-
-    def stop(self):
-        if self.is_connected:
-            self.speed = 0
-            print(f"[{self.device_name}] 离心机停止")
-
-    def get_status(self) -> dict:
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "speed": self.speed,
-            "temperature": 45.2  # 示例温度信息
-        }
-    
-    def get_result(self) -> dict:
-        return {
-            "status": "success" if self.is_connected else "disconnected",
-            "speed": self.speed
-        }
-    
-    def get_message(self) -> str:
-        return f"离心机状态: {'已连接' if self.is_connected else '未连接'}, 转速: {self.speed} rpm"
-
-class Furnace(SocketControlledDevice):
-    """串口控制的高温炉（示例设备类，实际项目中使用SocketControlledDevice）"""
-    def __init__(self):
-        super().__init__("serial_high_temp_furnace_01", "01", "COM3", 9600)
-        self.temperature = 0  # 高温炉特有属性：温度
-
-    def start(self):
-        if self.is_connected:
-            self.temperature = 800  # 设置目标温度
-            print(f"[{self.device_name}] 高温炉启动，目标温度：{self.temperature}℃")
-
-    def stop(self):
-        if self.is_connected:
-            self.temperature = 0
-            print(f"[{self.device_name}] 高温炉停止，开始降温")
-
-    def get_status(self) -> dict:
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "temperature": self.temperature,
-            "door_status": "closed"  # 示例炉门状态
-        }
-    
-    def get_result(self) -> dict:
-        return {
-            "status": "success" if self.is_connected else "disconnected",
-            "temperature": self.temperature
-        }
-    
-    def get_message(self) -> str:
-        return f"高温炉状态: {'已连接' if self.is_connected else '未连接'}, 温度: {self.temperature}℃"
-
-class MixerMachine(RestAPIControlledDevice):
-    """REST API控制的配料机（具体设备）"""
-    def __init__(self):
-        super().__init__("restapi_batching_machine_01", "01", "http://192.168.1.30/api/v1")
-        self.material_ratio = {"A": 0.3, "B": 0.7}  # 配料机特有属性：物料配比
-
-    def start(self):
-        if self.is_connected:
-            # 实际API请求：启动配料
-            # requests.post(f"{self.api_base_url}/start", json=self.material_ratio)
-            print(f"[{self.device_name}] 配料机启动，配比：{self.material_ratio}")
-
-    def stop(self):
-        if self.is_connected:
-            # requests.post(f"{self.api_base_url}/stop")
-            print(f"[{self.device_name}] 配料机停止")
-
-    def get_status(self) -> dict:
-        # 实际API请求：获取状态
-        # response = requests.get(f"{self.api_base_url}/status")
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "material_ratio": self.material_ratio,
-            "progress": 75  # 示例配料进度
-        }
-    
-    def get_result(self) -> dict:
-        return {
-            "status": "success" if self.is_connected else "disconnected",
-            "material_ratio": self.material_ratio,
-            "progress": 75
-        }
-    
-    def get_message(self) -> str:
-        return f"配料机状态: {'已连接' if self.is_connected else '未连接'}, 进度: 75%"
-
-# ===================== 4. 实例化与使用示例 =====================
-if __name__ == "__main__":
-    # 1. 创建设备实例（命名符合规范）
-    plc_robot_arm_01 = RobotArm()
-    modbus_centrifuge_01 = Centrifuge()
-    serial_high_temp_furnace_01 = Furnace()
-    restapi_batching_machine_01 = MixerMachine()
-
-    # 2. 统一管理所有设备（基类接口一致，可批量操作）
-    device_list = [
-        plc_robot_arm_01,
-        modbus_centrifuge_01,
-        serial_high_temp_furnace_01,
-        restapi_batching_machine_01
-    ]
-
-    # 3. 批量连接、启动、查询状态
-    for eq in device_list:
-        eq.connect()
-        eq.start()
-        print(f"设备状态：{eq.get_status()}\n")
-
-    # 4. 批量停止、断开
-    for eq in device_list:
-        eq.stop()
-        eq.disconnect()

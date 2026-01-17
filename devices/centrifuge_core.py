@@ -1,4 +1,3 @@
-# 文件名：centrifuge_core.py
 import socket
 import struct
 import binascii
@@ -8,7 +7,7 @@ from utils import CENT_CMDS, CENT_FAULT_MAP, CENT_RUN_MAP, CENT_ROTOR_MAP, CENT_
 import config
 
 
-class Centrifuge(ModbusControlledDevice):
+class CentrifugeController(ModbusControlledDevice):
     """Modbus控制的离心机设备"""
     
     def __init__(self, device_id: str = "01", host: str = None, port: int = None, timeout: int = None):
@@ -235,4 +234,4 @@ class Centrifuge(ModbusControlledDevice):
 
 
 # 创建全局实例（保持向后兼容）
-cent_sender = Centrifuge()
+centrifuge_controller = CentrifugeController()

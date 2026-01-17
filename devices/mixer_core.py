@@ -1,7 +1,3 @@
-"""
-配料设备控制模块
-基于REST API控制配料设备，实现任务管理功能
-"""
 import requests
 import time
 from typing import Dict, Any, List, Optional
@@ -11,7 +7,7 @@ import config
 
 class MixerController(RestAPIControlledDevice):
     """
-    配料设备控制器
+    RestAPI控制的配料设备
     基于配料设备API文档实现所有功能
     """
     

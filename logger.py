@@ -14,8 +14,23 @@ class SystemLogger:
 
         # 配置loguru日志记录到控制台和文件
         logger.remove()  # 移除默认处理器
-        logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO")
-        logger.add("logs/app_{time}.log", rotation="10 MB", retention="10 days", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
+        # 1. 控制台输出
+        logger.add(
+            sys.stdout,
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
+            level="INFO"
+        )
+        
+        # 2. 文件输出
+        logger.add(
+            "logs/app_{time:YYYY-MM-DD}.log",  # 按日期命名（粒度到天）
+            rotation="10 MB",                  # 单个文件达到10MB时滚动
+            retention="10 days",               # 保留10天日志
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
+            encoding="utf-8",                  # 新增：指定编码，避免中文乱码
+            compression="zip",                 # 新增：过期日志自动压缩，节省空间
+            enqueue=True                       # 新增：异步写入，避免阻塞程序
+        )
 
     def log(self, msg: str, level: str = "INFO"):
         """记录日志"""

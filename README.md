@@ -21,7 +21,7 @@ AGV总控系统
 ├── devices/
 │   ├── door_core.py        # 玻璃门控制模块
 │   ├── centrifuge_core.py  # 离心机控制模块
-│   ├── furnace_core.py     # 炉子控制模块
+│   ├── oven_core.py     # 炉子控制模块
 │   ├── mixer_core.py       # 配料设备控制模块
 │   └── mixer_api.py        # 配料设备API路由
 ├── schemas/                # 数据模型定义
@@ -76,7 +76,7 @@ AGV总控系统
 - **包含**:
   - `door_core.py`: 玻璃门控制模块
   - `centrifuge_core.py`: 离心机控制模块
-  - `furnace_core.py`: 炉子控制模块
+  - `oven_core.py`: 炉子控制模块
   - `mixer_core.py`: 配料设备控制模块
   - `mixer_api.py`: 配料设备API路由
 

@@ -8,16 +8,24 @@ from snap7.type import Area
 
 from utils import CENT_CMDS
 from logger import sys_logger as logger
+from .robot_core import RobotController
+from .door_core import DoorController
+from .centrifuge_core import CentrifugeController
+from .oven_core import OvenController
 
 # ==========================================
 # 6. 流程管理器 (核心修复：增加失败中断逻辑)
 # ==========================================
 class FlowManager:
-    def __init__(self, plc_mgr, door_ctrl, cent_sender, oven_driver, logger=logger):
-        self.plc_mgr = plc_mgr
-        self.door_ctrl = door_ctrl
-        self.cent_sender = cent_sender
-        self.oven_driver = oven_driver
+    def __init__(self, robot_controller: RobotController,
+            door_controller: DoorController, 
+            centrifuge_controller: CentrifugeController, 
+            oven_controller: OvenController, 
+            logger=logger):
+        self.robot_controller = robot_controller
+        self.door_controller = door_controller
+        self.centrifuge_controller = centrifuge_controller
+        self.oven_controller = oven_controller
         self.logger = logger
         self.task_queue = []
         self.running = False
@@ -47,9 +55,10 @@ class FlowManager:
         self.logger.log(">>> 人工已确认门盖状态，流程继续 <<<", "SUCCESS")
         self.confirm_event.set()
 
-    def add_flow_a(self, shelf_id, oven_id, qty):
+    def load(self, shelf_id, oven_id, qty):
         """上料流程"""
         self.task_queue = []
+        # === 步骤 1: 货架取 ===
         self.task_queue.append({
             'tid': 1, 'st': shelf_id, 'qty': qty,
             'auto_device': None, 'dev_id': 0, 'door_id': 0,
@@ -70,7 +79,7 @@ class FlowManager:
         self.running = True
         self.logger.log(f"流程A启动: 货架{shelf_id} -> 炉子{oven_id}", "INFO")
 
-    def add_flow_b(self, oven_id, slot_id, shelf_id):
+    def unload(self, oven_id, slot_id, shelf_id):
         """出料流程"""
         self.task_queue = []
         door_id = self.get_door_by_oven(oven_id)
@@ -130,11 +139,12 @@ class FlowManager:
                 continue
 
             # 初始检查，避免忙碌时下发
-            if not self.plc_mgr.try_connect():
+            if not self.robot_controller.connect():
                 continue
 
             # 假设 DB1.242=1 表示空闲
-            sys_status = self.plc_mgr.read_db_int(1, 242, 4)
+            # sys_status = self.robot_controller.read_db_int(1, 242, 4)
+            sys_status = self.robot_controller.get_system_status()
             if sys_status != 1:
                 continue
 
@@ -146,7 +156,7 @@ class FlowManager:
             # 1. 直接下发任务并启动机器人 (模拟Utils逻辑)
             # ====================================================
             # 2. 设置任务数据
-            if not self.plc_mgr.write_task(task['tid'], task['st'], task['qty']):
+            if not self.robot_controller.write_task(task['tid'], task['st'], task['qty']):
                 self.logger.log(f"严重错误: 任务数据写入失败，终止当前任务", "ERROR")
                 # 任务失败，不应继续
                 continue
@@ -155,9 +165,9 @@ class FlowManager:
 
             # 3. 启动点动 (发送启动信号)
             success_pulse = False
-            if self.plc_mgr.try_connect():
+            if self.robot_controller.connect():
                 # 使用封装好的 pulse_m 方法，它有返回值
-                if self.plc_mgr.pulse_m(10, 0):  # M10.0 是启动信号
+                if self.robot_controller.pulse_m(10, 0):  # M10.0 是启动信号
                     self.logger.log(f"PLC任务已下发, 启动信号已发送", "INFO")
                     success_pulse = True
                 else:
@@ -178,12 +188,12 @@ class FlowManager:
             self.logger.log("正在等待机器人响应启动指令...", "INFO")
 
             while time.time() - wait_run_start < 10:  # 最多等10秒让它动起来
-                if not self.plc_mgr.try_connect():
+                if not self.robot_controller.connect():
                     time.sleep(1)
                     continue
 
                 # 读取状态: 2=执行中
-                s = self.plc_mgr.read_db_int(1, 242, 4)
+                s = self.robot_controller.get_system_status()
                 if s == 2:
                     is_started = True
                     self.logger.log("机器人已开始运行 (状态变更为2)", "INFO")
@@ -203,13 +213,13 @@ class FlowManager:
                 try:
                     if task['auto_device'] == 'oven_complex':
                         self.logger.log(f"自动动作: 打开炉盖{task['dev_id']}及玻璃门{task['door_id']}", "INFO")
-                        self.oven_driver.control_lid(task['dev_id'], 1)
+                        self.oven_controller.control_lid(task['dev_id'], 1)
                         if task['door_id'] > 0:
-                            self.door_ctrl.send_command(task['door_id'], 'open')
+                            self.door_controller.send_command(task['door_id'], 'open')
 
                     elif task['auto_device'] == 'cent':
                         self.logger.log("自动动作: 打开离心机门", "INFO")
-                        self.cent_sender.send_raw(CENT_CMDS['open'])
+                        self.centrifuge_controller.send_raw(CENT_CMDS['open'])
                 except Exception as e:
                     self.logger.log(f"设备自动控制失败: {e}", "ERROR")
 
@@ -236,9 +246,8 @@ class FlowManager:
                 # 任务5,6 (Oven) 需要 M10.2 (Glass) 和 M10.3 (Oven)
                 # 任务3,4 (Cent) 需要 M10.4 (Cent)
                 try:
-                    if self.plc_mgr.try_connect():
-                        d = self.plc_mgr.client.read_area(Area.MK, 0, 10, 1)
-                        v = bytearray(d)
+                    if self.robot_controller.connect():
+                        v = self.robot_controller.read_m_bytes(10)
 
                         if task['auto_device'] == 'oven_complex':
                             # 置位 M10.2 (Bit 2) 和 M10.3 (Bit 3)
@@ -251,7 +260,7 @@ class FlowManager:
                             v[0] |= (1 << 4)
                             self.logger.log("已发送: 离心机门开启确认信号 (M10.4)", "INFO")
 
-                        self.plc_mgr.client.write_area(Area.MK, 0, 10, v)
+                        self.robot_controller.write_m_bytes(10, v)
                 except Exception as e:
                     self.logger.log(f"发送PLC许可信号失败: {e}", "ERROR")
 
@@ -264,16 +273,18 @@ class FlowManager:
             need_home_check = task.get('check_home', True)
             while True:
                 # 1. 优先处理断线
-                if not self.plc_mgr.connected:
+                if not self.robot_controller.connected:
                     self.logger.log("流程暂停: PLC连接断开，正在尝试重连...", "WARN")
-                    self.plc_mgr.try_connect()
+                    self.robot_controller.connect()
                     time.sleep(1)
                     idle_stable_start = 0
                     continue
 
                 # 2. 读取关键信号
-                current_sys_status = self.plc_mgr.read_db_int(1, 242, 4)
-                is_home = self.plc_mgr.read_db_bit(1, 218, 0)
+                # current_sys_status = self.robot_controller.read_db_int(1, 242, 4)
+                current_sys_status = self.robot_controller.get_system_status()
+                # is_home = self.robot_controller.read_db_bit(1, 218, 0)
+                is_home = self.robot_controller.get_home_status()
 
                 # 判断任务是否完成：状态必须为1，且 (如果不强制回原点 OR 确实在原点)
                 is_task_done = (current_sys_status == 1) and ((not need_home_check) or is_home)
@@ -301,14 +312,14 @@ class FlowManager:
             # ===============================================
             if task.get('auto_device'):
                 try:
-                    if self.plc_mgr.try_connect():
-                        d = self.plc_mgr.client.read_area(Area.MK, 0, 10, 1)
+                    if self.robot_controller.connect():
+                        d = self.robot_controller.read_m_bytes(10, 1)
                         v = bytearray(d)
                         # 复位 M10.2, M10.3, M10.4
                         v[0] &= ~(1 << 2)
                         v[0] &= ~(1 << 3)
                         v[0] &= ~(1 << 4)
-                        self.plc_mgr.client.write_area(Area.MK, 0, 10, v)
+                        self.robot_controller.write_m_bytes(10, v)
                 except:
                     pass
 
@@ -325,13 +336,13 @@ class FlowManager:
 
                     if task['door_id'] > 0:
                         self.logger.log(f"自动关闭: 玻璃门{task['door_id']}", "INFO")
-                        self.door_ctrl.send_command(task['door_id'], 'close')
+                        self.door_controller.send_command(task['door_id'], 'close')
                     self.logger.log("自动收尾完成", "SUCCESS")
                 except Exception as e:
                     self.logger.log(f"自动关闭失败: {e}", "ERROR")
 
-from .centrifuge_core import cent_sender
-from .door_core import door_ctrl
-from .plc_manager import plc_mgr
-from .furnace_core import oven_driver
-flow_mgr = FlowManager(plc_mgr, door_ctrl, cent_sender, oven_driver)
+from .robot_core import robot_controller
+from .door_core import door_controller
+from .centrifuge_core import centrifuge_controller
+from .oven_core import oven_controller
+flow_mgr = FlowManager(robot_controller, door_controller, centrifuge_controller, oven_controller)

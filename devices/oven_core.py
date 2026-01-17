@@ -1,4 +1,3 @@
-# 文件名：furnace_core.py
 import zmq
 import json
 import time
@@ -6,7 +5,7 @@ from .base import SocketControlledDevice
 import config
 
 
-class OvenDriver(SocketControlledDevice):
+class OvenController(SocketControlledDevice):
     """Socket（ZMQ）控制的高温炉设备"""
     
     def __init__(self, device_id: str = "01", 
@@ -225,4 +224,4 @@ class OvenDriver(SocketControlledDevice):
 
 
 # 创建全局实例（保持向后兼容）
-oven_driver = OvenDriver()
+oven_controller = OvenController()

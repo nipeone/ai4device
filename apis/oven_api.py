@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from logger import sys_logger as logger
 
 # 导入全局实例
-from devices.furnace_core import oven_driver
+from devices.oven_core import oven_controller
 
 router = APIRouter(prefix="/api/oven", tags=["炉子"])
 
@@ -12,8 +12,8 @@ router = APIRouter(prefix="/api/oven", tags=["炉子"])
 # ==========================================
 @router.get("/status", tags=["炉子"])
 def get_oven_status():
-    devices_list = oven_driver.get_device_list()
-    realtime_map = oven_driver.get_realtime_data(duration=10.0)
+    devices_list = oven_controller.get_device_list()
+    realtime_map = oven_controller.get_realtime_data(duration=10.0)
     summary_result = []
     for device in devices_list:
         sid = int(device.get('SlaveID') or device.get('SlaveId') or device.get('ID') or 0)
@@ -22,7 +22,7 @@ def get_oven_status():
                 "运行曲线": "-", "状态显示": "无数据", "结束时间": "-", "状态": "未知"}
         rt_data = realtime_map.get(sid)
         if rt_data:
-            detail = oven_driver.get_specific_device_info(sid)
+            detail = oven_controller.get_specific_device_info(sid)
             curve_name = detail.get('CurrentRunName') or detail.get('CurrentRun') or detail.get('CurrentWave') or "-"
             item["在线状态"] = "在线";
             item["实际温度"] = rt_data['pv'];
@@ -40,6 +40,6 @@ def get_oven_status():
 @router.post("/{id}/{action}", tags=["炉子"])
 def control_oven(id: int, action: int):
     logger.log(f"炉子手动操作: ID={id}, Action={action}", "INFO")
-    success, msg = oven_driver.control_lid(id, action)
+    success, msg = oven_controller.control_lid(id, action)
     if not success: logger.log(f"炉子操作失败: {msg}", "ERROR")
     return {"status": success, "msg": msg}

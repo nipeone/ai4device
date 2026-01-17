@@ -9,9 +9,8 @@ from apis.task_api import router as task_router
 from apis.system_api import router as system_router
 from apis.mixer_api import router as mixer_router
 from logger import sys_logger as logger
-from devices.plc_manager import plc_mgr
 import config  # 导入配置模块以加载环境变量
-
+from devices.robot_core import robot_controller
 # ==========================================
 # 应用生命周期管理
 # ==========================================
@@ -19,7 +18,8 @@ import config  # 导入配置模块以加载环境变量
 async def lifespan(app: FastAPI):
     # Startup
     logger.log("系统服务启动...", "INFO")
-    plc_mgr.try_connect()
+    if not robot_controller.connect():
+        logger.log(f"机器人连接失败: {robot_controller.get_message()}", "ERROR")
 
     yield  # 运行应用程序
 
