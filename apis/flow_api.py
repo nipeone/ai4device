@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body
 from logger import sys_logger as logger
 
 # 导入全局实例
-from devices.flow_manager import flow_mgr
+from flows.flow_manager import flow_mgr
 
 router = APIRouter(prefix="/api/flow", tags=["流程"])
 

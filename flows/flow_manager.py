@@ -8,10 +8,10 @@ from snap7.type import Area
 
 from utils import CENT_CMDS
 from logger import sys_logger as logger
-from .robot_core import RobotController
-from .door_core import DoorController
-from .centrifuge_core import CentrifugeController
-from .oven_core import OvenController
+from devices.robot_core import RobotController
+from devices.door_core import DoorController
+from devices.centrifuge_core import CentrifugeController
+from devices.oven_core import OvenController
 
 # ==========================================
 # 6. 流程管理器 (核心修复：增加失败中断逻辑)
@@ -56,7 +56,13 @@ class FlowManager:
         self.confirm_event.set()
 
     def load(self, shelf_id, oven_id, qty):
-        """上料流程"""
+        """上料流程（货架 -> 炉子）
+        执行后系统将自动打开对应炉盖与门，并暂停等待人工确认。
+
+        :param shelf_id: 货架ID
+        :param oven_id: 炉子ID
+        :param qty: 数量
+        """
         self.task_queue = []
         # === 步骤 1: 货架取 ===
         self.task_queue.append({
@@ -80,7 +86,13 @@ class FlowManager:
         self.logger.log(f"流程A启动: 货架{shelf_id} -> 炉子{oven_id}", "INFO")
 
     def unload(self, oven_id, slot_id, shelf_id):
-        """出料流程"""
+        """出料流程（炉子 -> 离心机 -> 货架）。
+        流程包含三次暂停，需配合确认接口使用。
+        
+        :param oven_id: 炉子ID
+        :param slot_id: 槽位号
+        :param shelf_id: 货架号
+        """
         self.task_queue = []
         door_id = self.get_door_by_oven(oven_id)
         # === 步骤 1: 炉子取 ===
@@ -331,8 +343,8 @@ class FlowManager:
                 except Exception as e:
                     self.logger.log(f"自动关闭失败: {e}", "ERROR")
 
-from .robot_core import robot_controller
-from .door_core import door_controller
-from .centrifuge_core import centrifuge_controller
-from .oven_core import oven_controller
+from devices.robot_core import robot_controller
+from devices.door_core import door_controller
+from devices.centrifuge_core import centrifuge_controller
+from devices.oven_core import oven_controller
 flow_mgr = FlowManager(robot_controller, door_controller, centrifuge_controller, oven_controller)

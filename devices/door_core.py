@@ -8,7 +8,8 @@ from typing import Literal
 class DoorController(SocketControlledDevice):
     """Socket（ZMQ）控制的防护门设备"""
     
-    def __init__(self, device_id: str = "01", target_address: str = None):
+    def __init__(self, device_id: str = "01", 
+                target_address: str = None):
         # 从环境变量获取配置，如果没有提供参数则使用默认值
         target_address = target_address or config.DOOR_TARGET_ADDRESS
         # ZMQ Socket通信
@@ -16,13 +17,14 @@ class DoorController(SocketControlledDevice):
         self.target_address = target_address
         self.door_status_cache = {}  # 缓存门状态
 
-    def _get_socket(self):
+    def _get_socket(self, timeout: int= 1000):
         """创建一个新的socket连接"""
         context = zmq.Context()
         socket = context.socket(zmq.REQ)
-        socket.connect(self.target_address)
         # 设置超时 1000ms
-        socket.setsockopt(zmq.RCVTIMEO, 1000)
+        socket.setsockopt(zmq.RCVTIMEO, timeout)
+        # 设置LINGER=0：关闭时不等待未发送的消息
+        socket.setsockopt(zmq.LINGER, 0)
         return context, socket
 
     def connect(self):
@@ -31,6 +33,7 @@ class DoorController(SocketControlledDevice):
             # 测试连接：尝试获取门状态
             test_context, test_socket = self._get_socket()
             try:
+                test_socket.connect(self.target_address)
                 test_socket.send(bytes([0x02, 1, 0, 0, 0]))
                 test_socket.recv()
                 self.is_connected = True
@@ -69,6 +72,7 @@ class DoorController(SocketControlledDevice):
 
         context, socket = self._get_socket()
         try:
+            socket.connect(self.target_address)
             socket.send(buffer)
             response_bytes = socket.recv()
 
@@ -139,6 +143,7 @@ class DoorController(SocketControlledDevice):
 
         context, socket = self._get_socket()
         try:
+            socket.connect(self.target_address)
             socket.send(buffer)
             frame_string = socket.recv_string()
 

@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-import requests  # REST API库（需安装：pip install requests）
-# PLC/Modbus可根据实际库替换（如pymodbus、pycomm3）
+import requests
 from datetime import datetime
 import time
 from enum import Enum
@@ -34,7 +33,7 @@ class BaseDevice(ABC):
     def __init__(self, device_name: str, control_type: str, device_id: str):
         # 通用属性：设备名称、控制方式、唯一编号
         self.device_name = device_name  # 如 "plc_robot_arm_01"
-        self.control_type = control_type      # 如 "PLC" / "Modbus" / "Socket" / "RESTAPI"
+        self.control_type = control_type      # 如 "PLC" / "Modbus" / "Socket" / "RESTAPI" / "Serial"
         self.device_id = device_id            # 如 "01"
         self.is_connected = False             # 设备连接状态
         self.result = None                    # 设备结果
@@ -417,3 +416,19 @@ class RestAPIControlledDevice(BaseDevice):
         """REST API设备通用断开逻辑（无实际连接，仅标记状态）"""
         self.is_connected = False
         print(f"[{self.device_name}] REST API设备断开连接")
+
+class SerialControlledDevice(BaseDevice):
+    """Serial控制设备的通用逻辑"""
+    def __init__(self, device_name: str, device_id: str, serial_port: str, serial_baudrate: int = 9600):
+        super().__init__(device_name, "Serial", device_id)
+        self.serial_port = serial_port
+        self.serial_baudrate = serial_baudrate
+        self.serial_client = None  # Serial客户端对象
+
+    def connect(self):
+        """Serial设备通用连接逻辑"""
+        pass
+
+    def disconnect(self):
+        """Serial设备通用断开逻辑"""
+        pass

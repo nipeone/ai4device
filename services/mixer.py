@@ -75,7 +75,7 @@ class MixerService:
             layout_list.append(layout_item)
         
         # 创建MixerModel对象
-        mixer_model = MixerModel(
+        mixer_model = MixerTaskModel(
             task_setup=task_setup,
             task_name=task_name,
             is_audit_log=is_audit_log,

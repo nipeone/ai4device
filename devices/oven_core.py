@@ -30,14 +30,21 @@ class OvenController(SocketControlledDevice):
         self.device_list = []
         self.realtime_data = {}
 
+    def _get_socket(self, timeout: int):
+        """创建一个新的socket连接"""
+        context = zmq.Context()
+        socket = context.socket(zmq.REQ)
+        # 设置超时 2000ms
+        socket.setsockopt(zmq.RCVTIMEO, timeout)
+        # 设置LINGER=0：关闭时不等待未发送的消息
+        socket.setsockopt(zmq.LINGER, 0)
+        return context, socket
+
     def connect(self):
         """连接ZMQ设备"""
         try:
             # 测试连接：获取设备列表
-            context = zmq.Context()
-            socket = context.socket(zmq.REQ)
-            socket.RCVTIMEO = 2000
-            socket.LINGER = 0
+            context, socket = self._get_socket(2000)
             try:
                 socket.connect(self.REQ_ADDR)
                 socket.send_string("DeviceDal.GetList@@@")
@@ -66,10 +73,7 @@ class OvenController(SocketControlledDevice):
         if not self.is_connected:
             return []
         
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        socket.RCVTIMEO = 2000
-        socket.LINGER = 0
+        context, socket = self._get_socket(2000)
         try:
             socket.connect(self.REQ_ADDR)
             socket.send_string("DeviceDal.GetList@@@")
@@ -90,10 +94,7 @@ class OvenController(SocketControlledDevice):
         if not self.is_connected:
             return {}
         
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        socket.RCVTIMEO = 1000
-        socket.LINGER = 0
+        context, socket = self._get_socket(1000)
         try:
             socket.connect(self.REQ_ADDR)
             socket.send_string(f"DeviceDal.GetList@@@SlaveID = {sid}")
@@ -115,10 +116,7 @@ class OvenController(SocketControlledDevice):
         if not self.is_connected:
             return {}
         
-        context = zmq.Context()
-        socket = context.socket(zmq.SUB)
-        socket.RCVTIMEO = 1000
-        socket.LINGER = 0
+        context, socket = self._get_socket(1000)
         latest_data = {}
 
         try:
@@ -164,9 +162,7 @@ class OvenController(SocketControlledDevice):
         if not self.is_connected:
             return False, "设备未连接"
         
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        socket.RCVTIMEO = 3000
+        context, socket = self._get_socket(3000)
         try:
             socket.connect(self.CTRL_ADDR)
             buffer = bytes([0x03, rid, 250, 0, action_code])
