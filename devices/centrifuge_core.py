@@ -3,8 +3,17 @@ import struct
 import binascii
 import time
 from .base import ModbusControlledDevice
-from utils import CENT_CMDS, CENT_FAULT_MAP, CENT_RUN_MAP, CENT_ROTOR_MAP, CENT_DOOR_MAP, cent_format_time
 import config
+from utils import (
+    CENT_CMDS, 
+    CENT_FAULT_MAP, 
+    CENT_RUN_MAP, 
+    CENT_ROTOR_MAP, 
+    CENT_DOOR_MAP, 
+    cent_format_time, 
+    cent_get_value
+)
+
 
 
 class CentrifugeController(ModbusControlledDevice):
@@ -15,16 +24,8 @@ class CentrifugeController(ModbusControlledDevice):
         host = host or config.CENTRIFUGE_HOST
         port = port or config.CENTRIFUGE_PORT
         timeout = timeout or config.CENTRIFUGE_TIMEOUT
-        super().__init__("modbus_centrifuge_" + device_id, device_id, 1, port)
-        self.host = host
+        super().__init__("modbus_centrifuge_" + device_id, device_id, host, port)
         self.timeout = timeout
-        self.speed = 0
-        self.runtime = 0
-        self.temperature = 0.0
-        self.status_code = 0
-        self.fault_code = 0
-        self.rotor_status = 0
-        self.door_status = 0
 
     def _calculate_crc(self, data):
         """计算Modbus CRC校验码"""
@@ -39,17 +40,13 @@ class CentrifugeController(ModbusControlledDevice):
                     crc >>= 1
         return struct.pack('<H', crc)
 
-    def _build_write_command(self, address, value):
+    def build_write_command(self, address, value):
         """构建写命令（内部方法）"""
         cmd_part = struct.pack('>BBHH', 0x01, 0x06, address, value)
         crc = self._calculate_crc(cmd_part)
         return cmd_part + crc
-    
-    def build_write_command(self, address, value):
-        """构建写命令（公共方法，保持向后兼容）"""
-        return self._build_write_command(address, value)
 
-    def _send_raw(self, hex_cmd):
+    def send_raw(self, hex_cmd):
         """发送原始Modbus命令并接收响应"""
         if not self.is_connected:
             return {"status": "error", "message": "设备未连接"}
@@ -57,7 +54,7 @@ class CentrifugeController(ModbusControlledDevice):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         try:
-            sock.connect((self.host, self.port))
+            sock.connect((self.modbus_addr, self.modbus_port))
             
             # 清空缓冲区
             sock.settimeout(0.1)
@@ -118,7 +115,7 @@ class CentrifugeController(ModbusControlledDevice):
         """连接Modbus设备"""
         try:
             # 测试连接：发送读取命令
-            test_result = self._send_raw(CENT_CMDS['read_all'])
+            test_result = self.send_raw(CENT_CMDS['read_all'])
             if test_result.get("status") == "success":
                 self.is_connected = True
                 self.message = "离心机连接成功"
@@ -144,7 +141,7 @@ class CentrifugeController(ModbusControlledDevice):
             self.result = {"status": "error", "message": "设备未连接"}
             return
         
-        result = self._send_raw(CENT_CMDS['start'])
+        result = self.send_raw(CENT_CMDS['start'])
         if result.get("status") == "success":
             self.message = "离心机启动成功"
             self.result = {"status": "success", "message": "启动成功"}
@@ -157,69 +154,117 @@ class CentrifugeController(ModbusControlledDevice):
         if not self.is_connected:
             self.message = "设备未连接"
             self.result = {"status": "error", "message": "设备未连接"}
-            return
+            return False
         
-        result = self._send_raw(CENT_CMDS['stop'])
+        result = self.send_raw(CENT_CMDS['stop'])
         if result.get("status") == "success":
             self.message = "离心机停止成功"
             self.result = {"status": "success", "message": "停止成功"}
+            return True
         else:
             self.message = f"停止失败: {result.get('message', '未知错误')}"
             self.result = {"status": "error", "message": result.get('message', '未知错误')}
+            return False
 
     def open_door(self):
         """打开离心机门"""
         if not self.is_connected:
-            return {"status": "error", "message": "设备未连接"}
-        return self._send_raw(CENT_CMDS['open'])
+            self.result = {"status": "error", "message": "设备未连接"}
+            return False
+        result = self.send_raw(CENT_CMDS['open'])
+        if result.get("status") == "success":
+            self.message = "离心机门打开成功"
+            self.result = {"status": "success", "message": "打开成功"}
+            return True
+        else:
+            self.message = f"打开失败: {result.get('message', '未知错误')}"
+            self.result = {"status": "error", "message": result.get('message', '未知错误')}
+            return False
 
     def close_door(self):
         """关闭离心机门"""
         if not self.is_connected:
-            return {"status": "error", "message": "设备未连接"}
-        return self._send_raw(CENT_CMDS['close'])
+            self.result = {"status": "error", "message": "设备未连接"}
+            return False
+        result = self.send_raw(CENT_CMDS['close'])
+        if result.get("status") == "success":
+            self.message = "离心机门关闭成功"
+            self.result = {"status": "success", "message": "关闭成功"}
+            return True
+        else:
+            self.message = f"关闭失败: {result.get('message', '未知错误')}"
+        return self.send_raw(CENT_CMDS['close'])
 
     def _parse_status_data(self, data_bytes):
         """解析状态数据"""
-        if len(data_bytes) < 33:
-            return
-        
-        # 解析数据（根据实际协议调整）
-        # 示例解析逻辑
-        self.speed = (data_bytes[3] << 8) + data_bytes[4] if len(data_bytes) > 4 else 0
-        self.runtime = (data_bytes[5] << 8) + data_bytes[6] if len(data_bytes) > 6 else 0
-        self.temperature = ((data_bytes[7] << 8) + data_bytes[8]) / 10.0 if len(data_bytes) > 8 else 0.0
-        self.status_code = data_bytes[9] if len(data_bytes) > 9 else 0
-        self.fault_code = data_bytes[10] if len(data_bytes) > 10 else 0
-        self.rotor_status = data_bytes[11] if len(data_bytes) > 11 else 0
-        self.door_status = data_bytes[12] if len(data_bytes) > 12 else 0
+        # 当前转速
+        actual_rpm = cent_get_value(data_bytes, 1)
+        # 离心力
+        centrifuge_force = cent_get_value(data_bytes, 2)
+        # 运行时间
+        run_time = cent_get_value(data_bytes, 3)
+        # 故障码
+        fault_code = cent_get_value(data_bytes, 4)
+        # 运行状态
+        run_state = cent_get_value(data_bytes, 5)
+        # 门窗状态
+        door_window = cent_get_value(data_bytes, 6)
+        # 设置转速
+        setted_rpm = cent_get_value(data_bytes, 8)
+        # 设置时间
+        setted_time = cent_get_value(data_bytes, 9)
+        # 门盖状态
+        door_lid = cent_get_value(data_bytes, 11)
+        # 机器状态
+        rotor_state = cent_get_value(data_bytes, 12)
+        # 剩余时间
+        remain_time = cent_get_value(data_bytes, 13)
+
+        return {
+            "actual_rpm": actual_rpm,
+            "centrifuge_force": centrifuge_force,
+            "run_time": run_time,
+            "fault_code": fault_code,
+            "run_state": run_state,
+            "door_window": door_window,
+            "setted_rpm": setted_rpm,
+            "setted_time": setted_time,
+            "door_lid": door_lid,
+            "rotor_state": rotor_state,
+            "remain_time": remain_time
+        }
 
     def get_status(self) -> dict:
         """获取设备状态"""
         if not self.is_connected:
             return {
                 "name": self.device_name,
-                "connected": False,
+                "connected": self.is_connected,
                 "message": "设备未连接"
             }
         
         # 读取实时状态
-        result = self._send_raw(CENT_CMDS['read_all'])
+        result = self.send_raw(CENT_CMDS['read_all'])
         if result.get("status") == "success" and "bytes" in result:
-            self._parse_status_data(result["bytes"])
-        
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "speed": self.speed,
-            "runtime": self.runtime,
-            "runtime_formatted": cent_format_time(self.runtime),
-            "temperature": self.temperature,
-            "status": CENT_RUN_MAP.get(self.status_code, "未知"),
-            "fault": CENT_FAULT_MAP.get(self.fault_code, "正常"),
-            "rotor_status": CENT_ROTOR_MAP.get(self.rotor_status, "未知"),
-            "door_status": CENT_DOOR_MAP.get(self.door_status, "未知")
-        }
+            data = result["bytes"]
+            if len(data) < 33: 
+                return {
+                    "name": self.device_name, 
+                    "connected": self.is_connected, 
+                    "message": "数据不完整"
+                }
+            else:
+                return {
+                    "name": self.device_name,
+                    "connected": self.is_connected,
+                    "data": self._parse_status_data(data)
+                }
+        else:
+            return {
+                "name": self.device_name,
+                "connected": self.is_connected,
+                "message": f"读取状态失败: {result.get('message', '未知错误')}"
+            }
 
     def get_result(self) -> dict:
         """获取设备结果"""

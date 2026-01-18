@@ -5,12 +5,16 @@ from apis.oven_api import router as oven_router
 from apis.door_api import router as door_router
 from apis.plc_api import router as plc_router
 from apis.flow_api import router as flow_router
-from apis.task_api import router as task_router
+from apis.experiment_api import router as experiment_router
 from apis.system_api import router as system_router
 from apis.mixer_api import router as mixer_router
 from logger import sys_logger as logger
 import config  # 导入配置模块以加载环境变量
 from devices.robot_core import robot_controller
+from devices.mixer_core import mixer_controller
+from devices.centrifuge_core import centrifuge_controller
+from devices.oven_core import oven_controller
+from devices.door_core import door_controller
 # ==========================================
 # 应用生命周期管理
 # ==========================================
@@ -20,7 +24,14 @@ async def lifespan(app: FastAPI):
     logger.log("系统服务启动...", "INFO")
     if not robot_controller.connect():
         logger.log(f"机器人连接失败: {robot_controller.get_message()}", "ERROR")
-
+    if not mixer_controller.connect():
+        logger.log(f"配料设备连接失败: {mixer_controller.get_message()}", "ERROR")
+    if not centrifuge_controller.connect():
+        logger.log(f"离心机连接失败: {centrifuge_controller.get_message()}", "ERROR")
+    if not oven_controller.connect():
+        logger.log(f"高温炉连接失败: {oven_controller.get_message()}", "ERROR")
+    if not door_controller.connect():
+        logger.log(f"玻璃门连接失败: {door_controller.get_message()}", "ERROR")
     yield  # 运行应用程序
 
     # Shutdown
@@ -38,7 +49,7 @@ app.include_router(oven_router)
 app.include_router(door_router)
 app.include_router(plc_router)
 app.include_router(flow_router)
-app.include_router(task_router)
+app.include_router(experiment_router)
 app.include_router(system_router)
 app.include_router(mixer_router)
 

@@ -23,22 +23,39 @@ def get_centrifuge_status():
     def gv(i):
         return struct.unpack('>H', bytes(data[3 + i * 2:3 + i * 2 + 2]))[0]
 
-    actual_rpm = gv(1);
-    fault_code = gv(4);
-    run_state = gv(5);
-    door_window = gv(6);
-    door_lid = gv(11);
-    rotor_state = gv(12);
+    actual_rpm = gv(1)
+    fault_code = gv(4)
+    run_state = gv(5)
+    door_window = gv(6)
+    door_lid = gv(11)
+    rotor_state = gv(12)
     remain_time = gv(13)
+    centrifuge_force = gv(2)
+    run_time = gv(3)
+    setted_rpm = gv(8)
+    setted_time = gv(9)
+
     return {
-        "面板数据": {"当前转速": f"{actual_rpm} RPM", "剩余时间": cent_format_time(remain_time),
-                     "运行状态": CENT_RUN_MAP.get(run_state, f"未知({run_state})"),
-                     "机器状态文字": CENT_ROTOR_MAP.get(rotor_state, "静止")},
-        "门状态对比": {"1_门窗状态(2206H)": CENT_DOOR_MAP.get(door_window, f"未知代码:{door_window}")},
-        "安全监控": {"故障状态": CENT_FAULT_MAP.get(fault_code, f"未知故障码: {fault_code}"),
-                     "最终判定安全": (fault_code == 0) and (door_window == 2 or door_lid == 2)},
-        "详细参数": {"实际转速_raw": actual_rpm, "实际离心力": gv(2), "设置转速": gv(8), "设置时间": gv(9),
-                     "运行时间": gv(3)}
+        "面板数据": {
+            "当前转速": f"{actual_rpm} RPM",
+            "剩余时间": cent_format_time(remain_time),
+            "运行状态": CENT_RUN_MAP.get(run_state, f"未知({run_state})"),
+            "机器状态文字": CENT_ROTOR_MAP.get(rotor_state, "静止")
+            },
+        "门状态对比": {
+            "1_门窗状态(2206H)": CENT_DOOR_MAP.get(door_window, f"未知代码:{door_window}")
+            },
+        "安全监控": {
+            "故障状态": CENT_FAULT_MAP.get(fault_code, f"未知故障码: {fault_code}"),
+            "最终判定安全": (fault_code == 0) and (door_window == 2 or door_lid == 2)
+            },
+        "详细参数": {
+            "实际转速_raw": actual_rpm,
+            "实际离心力": centrifuge_force,
+            "设置转速": setted_rpm,
+            "设置时间": setted_time,
+            "运行时间": run_time
+        }
     }
 
 

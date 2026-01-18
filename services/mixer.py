@@ -1,10 +1,10 @@
 import pandas as pd
 import io
 from typing import Any
-from schemas.mixer_task import MixerTaskModel
+from schemas.mixer import MixerTaskModel
 
 
-class MixerTaskService:
+class MixerService:
     """
     配料任务处理服务
     """
@@ -74,8 +74,8 @@ class MixerTaskService:
             
             layout_list.append(layout_item)
         
-        # 创建MixerTaskModel对象
-        mixer_task = MixerTaskModel(
+        # 创建MixerModel对象
+        mixer_model = MixerModel(
             task_setup=task_setup,
             task_name=task_name,
             is_audit_log=is_audit_log,
@@ -83,8 +83,8 @@ class MixerTaskService:
             layout_list=layout_list
         )
         
-        return mixer_task
+        return mixer_model
 
 
 # 创建全局服务实例
-mixer_task_service = MixerTaskService()
+mixer_service = MixerService()

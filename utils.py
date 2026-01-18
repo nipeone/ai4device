@@ -15,14 +15,18 @@ CENT_CMDS = {
 }
 
 
-def cent_format_time(s):
-    m, s = divmod(s, 60);
-    h, m = divmod(m, 60)
-    return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
-
-
 # 故障和状态映射
 CENT_FAULT_MAP = {0: "系统正常", 1: "转子不平衡", 4: "伺服控制器故障", 5: "离心机门未关"}
 CENT_RUN_MAP = {0: "状态未知", 1: "已停止", 2: "运行中"}
 CENT_ROTOR_MAP = {0: "不定态", 1: "加速中", 2: "恒速运行", 3: "降速中", 4: "定位中"}
 CENT_DOOR_MAP = {1: "门窗开启", 2: "门窗关闭"}
+
+def cent_format_time(s):
+    '''格式化时间'''
+    m, s = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+
+def cent_get_value(data, i):
+    '''获取数据'''
+    return struct.unpack('>H', bytes(data[3 + i * 2:3 + i * 2 + 2]))[0]

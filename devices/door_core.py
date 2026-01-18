@@ -2,6 +2,7 @@ import zmq
 import time
 from .base import SocketControlledDevice
 import config
+from typing import Literal
 
 
 class DoorController(SocketControlledDevice):
@@ -88,10 +89,11 @@ class DoorController(SocketControlledDevice):
             socket.close()
             context.term()
 
-    def send_command(self, door_index: int, action: str):
+    def send_command(self, door_index: int, action: Literal["open", "close"]):
         """
         控制开门/关门
-        ** 新增逻辑：同组互斥 **
+        - door_index: 门编号
+        - action: "open" 开门 "close" 关门
         """
         if not self.is_connected:
             return {"status": "error", "message": "设备未连接"}

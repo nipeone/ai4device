@@ -164,18 +164,8 @@ class FlowManager:
             time.sleep(0.5)
 
             # 3. 启动点动 (发送启动信号)
-            success_pulse = False
-            if self.robot_controller.connect():
-                # 使用封装好的 pulse_m 方法，它有返回值
-                if self.robot_controller.pulse_m(10, 0):  # M10.0 是启动信号
-                    self.logger.log(f"PLC任务已下发, 启动信号已发送", "INFO")
-                    success_pulse = True
-                else:
-                    self.logger.log("启动信号发送异常: Pulse返回失败", "ERROR")
-
-            # 【核心修改】如果启动信号发送失败，直接中止！
-            if not success_pulse:
-                self.logger.log("严重错误: 机器人启动信号发送失败，流程终止", "ERROR")
+            if not self.robot_controller.dispatch_task():
+                self.logger.log(f"严重错误: 机器人启动信号发送失败，流程终止", "ERROR")
                 continue
 
             print(f"PLC任务 {task['desc']} 已启动，等待完成及回原点...")
@@ -219,7 +209,7 @@ class FlowManager:
 
                     elif task['auto_device'] == 'cent':
                         self.logger.log("自动动作: 打开离心机门", "INFO")
-                        self.centrifuge_controller.send_raw(CENT_CMDS['open'])
+                        self.centrifuge_controller.open_door()
                 except Exception as e:
                     self.logger.log(f"设备自动控制失败: {e}", "ERROR")
 

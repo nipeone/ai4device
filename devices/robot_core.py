@@ -16,8 +16,8 @@ class RobotController(PLCControlledDevice):
         """获取 PLC 连接及机器人状态。
         第 1 个值 (Index 0): 对应 M10.0 (任务下发) -> false (未触发)。
         第 2 个值 (Index 1): 对应 M10.1 (任务清除) -> false。
-        第 3 个值 (Index 2): 对应 M10.2 (开玻璃门) -> false。
-        第 4 个值 (Index 3): 对应 M10.3 (开加热炉) -> false。
+        第 3 个值 (Index 2): 对应 M10.2 (开高温炉门) -> false。
+        第 4 个值 (Index 3): 对应 M10.3 (开高温炉盖) -> false。
         第 5 个值 (Index 4): 对应 M10.4 (开离心机门) -> false。
         第 6 个值 (Index 5): 对应 M10.5 (机器人停止) -> true。(触发)。
          DB1.218.0 (原点状态) - 1=原点。
@@ -104,13 +104,21 @@ class RobotController(PLCControlledDevice):
         在bit输入位地址(0 - 5)，执行后将对应的M10.x信号取反。
         M10.0	任务下发	标签3	反转控制
         M10.1	任务清除	标签8	反转控制
-        M10.2	开玻璃门	标签7	反转控制
-        M10.3   开加热炉    标签1   反转控制
+        M10.2	开高温炉门	标签7	反转控制
+        M10.3   开高温炉盖  标签1   反转控制
         M10.4   开离心机门  标签2   反转控制
         M10.5	机器人停止	标签13	反转控制。"""
         if not self.connect():
             return False
         return self.toggle_m(10, bit)
+
+    def dispatch_task(self):
+        """下发任务
+        M10.0 是启动信号
+        """
+        if not self.connect():
+            return False
+        return self.pulse_m(10, 0)
 
     def write_task(self, tid, st, qty):
         """写入任务数据到DB3

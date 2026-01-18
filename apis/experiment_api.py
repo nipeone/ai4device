@@ -1,13 +1,17 @@
 from fastapi import APIRouter, File, UploadFile
-import pandas as pd
-import io
 from logger import sys_logger as logger
-from schemas.mixer_task import MixerTaskModel
-from services.mixer_task import mixer_task_service
 
-router = APIRouter(prefix="/api/task", tags=["任务"])
+# 导入全局实例
+from devices.flow_manager import flow_mgr
+from devices.mixer_core import mixer_controller
+from devices.centrifuge_core import centrifuge_controller
+from devices.oven_core import oven_controller
+from devices.door_core import door_controller
+from services.mixer import mixer_service
 
-@router.post("/experiment", tags=["任务"])
+router = APIRouter(prefix="/api/experiment", tags=["实验"])
+
+@router.post("/experiment", tags=["实验"])
 async def start_experiment(file: UploadFile = File(...)):
     """
     开始试验的总入口
@@ -25,14 +29,14 @@ async def start_experiment(file: UploadFile = File(...)):
         # 读取上传的Excel文件
         contents = await file.read()
 
-        mixer_task = await mixer_task_service.parse_mixer_tasks_from_excel(contents)
+        mixer_model = await mixer_service.parse_mixer_tasks_from_excel(contents)
 
-        logger.log(f"Excel文件解析成功，任务名称: {mixer_task.task_name}", "INFO")
+        logger.log(f"Excel文件解析成功，任务名称: {mixer_model.task_name}", "INFO")
 
         return {
             "status": "success",
             "message": "Excel文件解析成功",
-            "task_data": mixer_task.model_dump_json()
+            "task_data": mixer_model.model_dump_json()
         }
 
     except Exception as e:
