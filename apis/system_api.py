@@ -7,3 +7,8 @@ router = APIRouter(prefix="/api/system", tags=["系统"])
 def get_system_logs():
     """获取最新日志"""
     return {"logs": logger.logs}
+
+@router.get("/health", tags=["系统"])
+def get_system_health():
+    """获取系统健康状态"""
+    return {"status": "healthy"}
