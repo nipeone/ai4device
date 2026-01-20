@@ -39,7 +39,9 @@ MIXER_PASSWORD = os.getenv("MIXER_PASSWORD", "admin")
 MIXER_TIMEOUT = int(os.getenv("MIXER_TIMEOUT", "30"))
 
 # ===================== XRD设备配置 =====================
-XRD_TARGET_ADDRESS=os.getenv("XRD_TARGET_ADDRESS", "tcp://192.168.8.127:8009")
+XRD_HOST = os.getenv("XRD_HOST", "192.168.8.127")
+XRD_PORT = int(os.getenv("XRD_PORT", "8009"))
+XRD_TIMEOUT = int(os.getenv("XRD_TIMEOUT", "5"))
 
 # ===================== 日志配置 =====================
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

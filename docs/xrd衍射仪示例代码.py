@@ -10,11 +10,12 @@ class XRDController:
             return False
         try:
             #构建命令字典
-            cmd_dict = {"command":command}
+            cmd_dict = {"command": command}
             if content:
                 cmd_dict["content"] = content
             #序列化为JS0N
             cmd_json = json.dumps(cmd_dict).encode('utf-8')
+
             #发送命令长度
             cmd_length = struct.pack('>I', len(cmd_json))
             self.client_socket.sendall(cmd_length)
@@ -22,5 +23,5 @@ class XRDController:
             self.client_socket.sendall(cmd_json)
             return True
         except Exception as e:
-            self.connection_status.emit(False,f"发送命令失败:{str(e)}")
+            self.connection_status.emit(False, f"发送命令失败:{str(e)}")
             return False
