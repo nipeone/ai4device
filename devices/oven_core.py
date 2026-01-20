@@ -13,8 +13,11 @@ class OvenController(SocketControlledDevice):
                  sub_addr: str = None,
                  ctrl_addr: str = None):
         # 从环境变量获取配置，如果没有提供参数则使用默认值
+        # 请求地址，用于获取设备列表
         req_addr = req_addr or config.FURNACE_REQ_ADDR
+        # 订阅地址，用于获取实时数据
         sub_addr = sub_addr or config.FURNACE_SUB_ADDR
+        # 控制地址，用于控制炉盖
         ctrl_addr = ctrl_addr or config.FURNACE_CTRL_ADDR
         # ZMQ Socket通信，使用req_addr作为主地址
         super().__init__("socket_oven_" + device_id, device_id, req_addr)
@@ -22,6 +25,7 @@ class OvenController(SocketControlledDevice):
         self.SUB_ADDR = sub_addr
         self.CTRL_ADDR = ctrl_addr
         self.SUB_TOPIC = b"Oven"
+        self._socket_timeout = 2000  # 设置默认超时时间
         self.temperature = 0.0
         self.target_temperature = 0.0
         self.runtime = 0
@@ -29,84 +33,103 @@ class OvenController(SocketControlledDevice):
         self.step = 0
         self.device_list = []
         self.realtime_data = {}
-
-    def _get_socket(self, timeout: int):
-        """创建一个新的socket连接"""
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        # 设置超时 2000ms
-        socket.setsockopt(zmq.RCVTIMEO, timeout)
-        # 设置LINGER=0：关闭时不等待未发送的消息
-        socket.setsockopt(zmq.LINGER, 0)
-        return context, socket
+        # 用于SUB socket的临时context（因为SUB socket需要独立管理）
+        self._sub_context = None
+        self._sub_socket = None
+        # 用于CTRL socket的临时context（因为CTRL socket需要独立管理）
+        self._ctrl_context = None
+        self._ctrl_socket = None
 
     def connect(self):
         """连接ZMQ设备"""
+        # 调用父类方法创建主context和socket（用于REQ操作）
+        if not super().connect():
+            return False
+        
         try:
+            # 连接主socket到REQ地址
+            self.socket.connect(self.REQ_ADDR)
+            
             # 测试连接：获取设备列表
-            context, socket = self._get_socket(2000)
-            try:
-                socket.connect(self.REQ_ADDR)
-                socket.send_string("DeviceDal.GetList@@@")
-                data = json.loads(socket.recv_string())
-                self.is_connected = True
-                self.device_list = data if isinstance(data, list) else []
-                self.message = "高温炉设备连接成功"
-                return True
-            except Exception as e:
-                raise
-            finally:
-                socket.close()
-                context.term()
+            self.socket.send_string("DeviceDal.GetList@@@")
+            data = json.loads(self.socket.recv_string())
+            self.device_list = data if isinstance(data, list) else []
+            
+            self.message = "高温炉设备连接成功"
+            return True
         except Exception as e:
             self.is_connected = False
             self.message = f"高温炉设备连接失败: {str(e)}"
+            self._cleanup_socket()
             return False
 
     def disconnect(self):
         """断开ZMQ设备连接"""
-        super().disconnect()  # 调用基类的断开逻辑
+        # 清理SUB socket
+        if self._sub_socket:
+            try:
+                self._sub_socket.close()
+            except:
+                pass
+            self._sub_socket = None
+        if self._sub_context:
+            try:
+                self._sub_context.term()
+            except:
+                pass
+            self._sub_context = None
+        
+        # 清理CTRL socket
+        if self._ctrl_socket:
+            try:
+                self._ctrl_socket.close()
+            except:
+                pass
+            self._ctrl_socket = None
+        if self._ctrl_context:
+            try:
+                self._ctrl_context.term()
+            except:
+                pass
+            self._ctrl_context = None
+        
+        # 调用父类方法清理主socket
+        super().disconnect()
         self.message = "高温炉设备已断开连接"
 
     def get_device_list(self):
         """获取所有设备的基础列表"""
-        if not self.is_connected:
+        if not self.is_connected or not self.socket:
             return []
         
-        context, socket = self._get_socket(2000)
         try:
-            socket.connect(self.REQ_ADDR)
-            socket.send_string("DeviceDal.GetList@@@")
-            data = json.loads(socket.recv_string())
+            self.socket.send_string("DeviceDal.GetList@@@")
+            data = json.loads(self.socket.recv_string())
             self.device_list = data if isinstance(data, list) else []
             return self.device_list
-        except:
+        except Exception as e:
+            # 如果socket出错，标记为未连接
+            self.is_connected = False
             return []
-        finally:
-            socket.close()
-            context.term()
 
     def get_specific_device_info(self, sid):
         """
         获取特定设备的详细信息
         用于读取：运行曲线名称、仪表型号等详细字段
         """
-        if not self.is_connected:
+        if not self.is_connected or not self.socket:
             return {}
         
-        context, socket = self._get_socket(1000)
         try:
-            socket.connect(self.REQ_ADDR)
-            socket.send_string(f"DeviceDal.GetList@@@SlaveID = {sid}")
-            data = json.loads(socket.recv_string())
+            self.socket.send_string(f"DeviceDal.GetList@@@SlaveID = {sid}")
+            data = json.loads(self.socket.recv_string())
             if isinstance(data, list) and len(data) > 0:
                 return data[0]
             return data
-        except:
+        except Exception as e:
+            # 如果socket出错，标记为未连接
+            self.is_connected = False
             return {}
-        finally:
-            socket.close()
-            context.term()
 
     def get_realtime_data(self, duration=10.0):
         """
@@ -116,19 +139,25 @@ class OvenController(SocketControlledDevice):
         if not self.is_connected:
             return {}
         
-        context, socket = self._get_socket(1000)
+        # SUB socket需要独立管理，因为它是SUB类型，与主REQ socket不同
+        # 如果SUB socket不存在或已断开，重新创建
+        if not self._sub_socket or not self._sub_context:
+            try:
+                self._sub_context, self._sub_socket = self._create_socket(zmq.SUB)  # 创建SUB socket
+                self._sub_socket.setsockopt(zmq.SUBSCRIBE, self.SUB_TOPIC)  # 订阅主题
+                self._sub_socket.connect(self.SUB_ADDR)  # 连接到订阅地址
+            except Exception as e:
+                print(f"Oven Sub Socket创建失败: {e}")
+                return {}
+        
         latest_data = {}
-
         try:
-            socket.connect(self.SUB_ADDR)
-            socket.setsockopt(zmq.SUBSCRIBE, self.SUB_TOPIC)
-            
-            time.sleep(0.1)
+            time.sleep(0.1)  # 等待连接建立
             
             start_time = time.time()
             while time.time() - start_time < duration:
                 try:
-                    parts = socket.recv_multipart(flags=zmq.NOBLOCK)
+                    parts = self._sub_socket.recv_multipart(flags=zmq.NOBLOCK)
                     if len(parts) >= 2:
                         data = parts[1]
                         if len(data) >= 9:
@@ -146,9 +175,19 @@ class OvenController(SocketControlledDevice):
                     time.sleep(0.01)
         except Exception as e:
             print(f"Oven Sub Error: {e}")
-        finally:
-            socket.close()
-            context.term()
+            # SUB socket出错时清理
+            if self._sub_socket:
+                try:
+                    self._sub_socket.close()
+                except:
+                    pass
+                self._sub_socket = None
+            if self._sub_context:
+                try:
+                    self._sub_context.term()
+                except:
+                    pass
+                self._sub_context = None
         
         self.realtime_data = latest_data
         return latest_data
@@ -162,12 +201,21 @@ class OvenController(SocketControlledDevice):
         if not self.is_connected:
             return False, "设备未连接"
         
-        context, socket = self._get_socket(3000)
+        # CTRL socket需要独立管理，因为它连接到不同的地址
+        # 如果CTRL socket不存在或已断开，重新创建
+        if not self._ctrl_socket or not self._ctrl_context:
+            try:
+                self._ctrl_context, self._ctrl_socket = self._create_socket(zmq.REQ, 3000)  # 创建CTRL socket
+                self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
+            except Exception as e:
+                self.message = f"CTRL Socket创建失败: {str(e)}"
+                self.result = {"status": "error", "message": str(e)}
+                return False, str(e)
+        
         try:
-            socket.connect(self.CTRL_ADDR)
             buffer = bytes([0x03, rid, 250, 0, action_code])
-            socket.send(buffer)
-            response = socket.recv_string()
+            self._ctrl_socket.send(buffer)
+            response = self._ctrl_socket.recv_string()
             success = response != "False"
             if success:
                 self.message = f"炉{rid}盖控制成功，动作: {action_code}"
@@ -179,10 +227,20 @@ class OvenController(SocketControlledDevice):
         except Exception as e:
             self.message = f"炉{rid}盖控制异常: {str(e)}"
             self.result = {"status": "error", "message": str(e)}
+            # CTRL socket出错时清理，下次使用时重新创建
+            if self._ctrl_socket:
+                try:
+                    self._ctrl_socket.close()
+                except:
+                    pass
+                self._ctrl_socket = None
+            if self._ctrl_context:
+                try:
+                    self._ctrl_context.term()
+                except:
+                    pass
+                self._ctrl_context = None
             return False, str(e)
-        finally:
-            socket.close()
-            context.term()
 
     def start(self):
         """启动设备（高温炉启动需要指定具体参数）"""

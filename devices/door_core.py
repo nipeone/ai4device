@@ -16,38 +16,28 @@ class DoorController(SocketControlledDevice):
         super().__init__("socket_door_" + device_id, device_id, target_address)
         self.target_address = target_address
         self.door_status_cache = {}  # 缓存门状态
-
-    def _get_socket(self, timeout: int= 1000):
-        """创建一个新的socket连接"""
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        # 设置超时 1000ms
-        socket.setsockopt(zmq.RCVTIMEO, timeout)
-        # 设置LINGER=0：关闭时不等待未发送的消息
-        socket.setsockopt(zmq.LINGER, 0)
-        return context, socket
+        self._socket_timeout = 1000  # 设置默认超时时间
 
     def connect(self):
         """连接ZMQ设备"""
+        # 调用父类方法创建context和socket
+        if not super().connect():
+            return False
+        
         try:
+            # 连接socket到目标地址
+            self.socket.connect(self.target_address)
+            
             # 测试连接：尝试获取门状态
-            test_context, test_socket = self._get_socket()
-            try:
-                test_socket.connect(self.target_address)
-                test_socket.send(bytes([0x02, 1, 0, 0, 0]))
-                test_socket.recv()
-                self.is_connected = True
-                self.message = "防护门设备连接成功"
-                test_socket.close()
-                test_context.term()
-                return True
-            except:
-                test_socket.close()
-                test_context.term()
-                raise
+            self.socket.send(bytes([0x02, 1, 0, 0, 0]))
+            self.socket.recv()
+            
+            self.message = "防护门设备连接成功"
+            return True
         except Exception as e:
             self.is_connected = False
             self.message = f"防护门设备连接失败: {str(e)}"
+            self._cleanup_socket()
             return False
 
     def disconnect(self):
@@ -60,7 +50,7 @@ class DoorController(SocketControlledDevice):
         获取门的实时状态
         发送: [0x02, SlaveID, 0, 0, 0]
         """
-        if not self.is_connected:
+        if not self.is_connected or not self.socket:
             return "设备未连接"
 
         if not (1 <= door_index <= 6):
@@ -70,11 +60,9 @@ class DoorController(SocketControlledDevice):
         is_channel_1 = (door_index % 2 == 0)
         buffer = bytes([0x02, slave_id, 0, 0, 0])
 
-        context, socket = self._get_socket()
         try:
-            socket.connect(self.target_address)
-            socket.send(buffer)
-            response_bytes = socket.recv()
+            self.socket.send(buffer)
+            response_bytes = self.socket.recv()
 
             if len(response_bytes) == 2:
                 target_byte = response_bytes[1] if is_channel_1 else response_bytes[0]
@@ -88,10 +76,9 @@ class DoorController(SocketControlledDevice):
         except zmq.Again:
             return "通信超时"
         except Exception as e:
+            # 如果socket出错，标记为未连接
+            self.is_connected = False
             return f"错误:{str(e)}"
-        finally:
-            socket.close()
-            context.term()
 
     def send_command(self, door_index: int, action: Literal["open", "close"]):
         """
@@ -134,6 +121,11 @@ class DoorController(SocketControlledDevice):
                 time.sleep(0.5)
 
         # === 控制逻辑 ===
+        if not self.is_connected or not self.socket:
+            self.message = "设备未连接"
+            self.result = {"status": "error", "message": "设备未连接"}
+            return {"status": "error", "message": "设备未连接"}
+
         slave_id = (door_index + 1) // 2
         channel = 0 if door_index % 2 == 1 else 1
         value = 1 if action == "open" else 2
@@ -141,11 +133,9 @@ class DoorController(SocketControlledDevice):
         # 控制指令: 0x01 ...
         buffer = bytes([0x01, slave_id, channel, 0, value])
 
-        context, socket = self._get_socket()
         try:
-            socket.connect(self.target_address)
-            socket.send(buffer)
-            frame_string = socket.recv_string()
+            self.socket.send(buffer)
+            frame_string = self.socket.recv_string()
 
             if frame_string == "True":
                 self.message = f"门{door_index} {action}操作成功"
@@ -160,12 +150,11 @@ class DoorController(SocketControlledDevice):
             self.result = {"status": "error", "message": "通信超时"}
             return {"status": "error", "message": "通信超时"}
         except Exception as e:
+            # 如果socket出错，标记为未连接
+            self.is_connected = False
             self.message = f"门{door_index} {action}操作异常: {str(e)}"
             self.result = {"status": "error", "message": str(e)}
             return {"status": "error", "message": str(e)}
-        finally:
-            socket.close()
-            context.term()
 
     def start(self):
         """启动设备（门设备无需启动操作）"""

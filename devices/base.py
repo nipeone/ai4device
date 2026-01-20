@@ -365,29 +365,83 @@ class SocketControlledDevice(BaseDevice):
         self.socket_address = socket_address  # Socket地址：如 "tcp://127.0.0.1:49202"
         self.context = None  # ZMQ Context对象
         self.socket = None  # ZMQ Socket对象
+        # 默认socket类型和超时时间（延迟导入zmq）
+        try:
+            import zmq
+            self._socket_type = zmq.REQ  # 默认socket类型，子类可重写
+        except ImportError:
+            self._socket_type = None  # zmq未安装时设为None
+        self._socket_timeout = 1000  # 默认超时时间(ms)，子类可重写
+
+    def _create_socket(self, socket_type=None, timeout=None):
+        """
+        创建socket连接（内部方法）
+        :param socket_type: socket类型，默认使用self._socket_type
+        :param timeout: 超时时间(ms)，默认使用self._socket_timeout
+        :return: (context, socket) 元组
+        """
+        try:
+            import zmq
+        except ImportError:
+            raise ImportError("pyzmq库未安装，请运行: pip install pyzmq")
+        
+        socket_type = socket_type or self._socket_type
+        timeout = timeout or self._socket_timeout
+        
+        context = zmq.Context()
+        socket = context.socket(socket_type)
+        socket.setsockopt(zmq.RCVTIMEO, timeout)
+        socket.setsockopt(zmq.LINGER, 0)  # 关闭时不等待未发送的消息
+        return context, socket
 
     def connect(self):
-        """Socket设备通用连接逻辑（子类需要实现具体连接测试）"""
-        # 子类需要实现具体的连接测试逻辑
-        self.is_connected = True
-        print(f"[{self.device_name}] Socket设备连接成功")
+        """
+        Socket设备通用连接逻辑
+        子类应该先调用super().connect()创建context和socket，然后进行连接测试
+        """
+        # 如果已经连接，先断开
+        if self.is_connected:
+            self.disconnect()
+        
+        try:
+            # 使用_create_socket方法创建context和socket
+            self.context, self.socket = self._create_socket()
+            
+            # 子类需要实现具体的连接测试逻辑
+            # 这里只设置基本状态，子类应该调用super().connect()后测试连接
+            self.is_connected = True
+            return True
+        except ImportError as e:
+            self.is_connected = False
+            self.message = "pyzmq库未安装"
+            self._cleanup_socket()
+            return False
+        except Exception as e:
+            self.is_connected = False
+            self.message = f"Socket设备连接失败: {str(e)}"
+            self._cleanup_socket()
+            return False
 
-    def disconnect(self):
-        """Socket设备通用断开逻辑"""
+    def _cleanup_socket(self):
+        """清理socket资源（内部方法）"""
         if self.socket:
             try:
                 self.socket.close()
             except:
                 pass
+            self.socket = None
         if self.context:
             try:
                 self.context.term()
             except:
                 pass
-        self.socket = None
-        self.context = None
+            self.context = None
+
+    def disconnect(self):
+        """Socket设备通用断开逻辑"""
+        self._cleanup_socket()
         self.is_connected = False
-        print(f"[{self.device_name}] Socket设备断开连接")
+        self.message = f"{self.device_name}已断开连接"
 
 class RestAPIControlledDevice(BaseDevice):
     """REST API控制设备的通用逻辑"""
