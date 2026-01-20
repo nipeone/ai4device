@@ -47,7 +47,7 @@ flowchart TB
 
 PENDING          → 任务已创建,等待执行
 WAITING_MATERIAL → 等待人工装料确认
-BATCHING         → 配料中
+MIXING           → 配料中
 WAITING_SEAL     → 等待人工放入熔封设备
 SEALING          → 熔封中
 WAITING_RACK     → 等待人工放入货架

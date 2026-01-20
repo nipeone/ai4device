@@ -38,6 +38,9 @@ MIXER_USERNAME = os.getenv("MIXER_USERNAME", "admin")
 MIXER_PASSWORD = os.getenv("MIXER_PASSWORD", "admin")
 MIXER_TIMEOUT = int(os.getenv("MIXER_TIMEOUT", "30"))
 
+# ===================== XRD设备配置 =====================
+XRD_TARGET_ADDRESS=os.getenv("XRD_TARGET_ADDRESS", "tcp://192.168.8.127:8009")
+
 # ===================== 日志配置 =====================
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = os.getenv("LOG_FILE", "logs/app.log")

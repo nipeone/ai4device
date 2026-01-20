@@ -1,10 +1,14 @@
-from .base import RestAPIControlledDevice
+from .base import SocketControlledDevice
+import config
 
-class XRDController(RestAPIControlledDevice):
+class XRDController(SocketControlledDevice):
     """XRD衍射仪设备"""
     
-    def __init__(self, device_id: str = "01", api_base_url: str = None):
-        super().__init__("xrd_" + device_id, device_id, api_base_url)
+    def __init__(self, device_id: str = "01",
+                 target_address: str = None):
+        target_address = target_address or config.XRD_TARGET_ADDRESS
+        super().__init__("xrd_" + device_id, device_id, target_address)
+        self.xrd_status_cache = {}
 
     def connect(self):
         """连接XRD衍射仪设备"""
