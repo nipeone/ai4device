@@ -8,7 +8,7 @@ import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from devices.xrd_core import XRDController
+from devices.xrd_core import XRDController, xrd_controller
 from logger import sys_logger as logger
 
 
@@ -436,7 +436,4 @@ class XRDFlowManager:
         self._log_step("设备关闭完成", "SUCCESS")
         return True
 
-
-# 创建全局实例
-from devices.xrd_core import xrd_controller
 xrd_flow_manager = XRDFlowManager(xrd_controller)
