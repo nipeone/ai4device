@@ -6,6 +6,7 @@ import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+from schemas.mixer import MixerTaskModel
 from devices.mixer_core import MixerController, mixer_controller
 from logger import sys_logger as logger
 
@@ -52,6 +53,32 @@ class MixFlowManager:
     
     def _check_device_ready(self) -> bool:
         """检查设备是否就绪"""
+        # TODO: 检查设备是否就绪
+        return True
 
+    def run(self, mixer_task_model: MixerTaskModel):
+        self._log_step("开始配料流程", "INFO")
+        self._wait_for_confirm("请确认配料设备就绪，然后点击确认", timeout=300)
+
+        # step 1: 创建任务
+        self._log_step("配料设备就绪，开始配料", "INFO")
+        self.mix_controller.add_task(mixer_task_model.task_name,
+                                     mixer_task_model.layout_list,
+                                     mixer_task_model.task_id,
+                                     task_template_id_list=mixer_task_model.task_template_id_list,
+                                     is_audit_log=mixer_task_model.is_audit_log,
+                                     is_copy=mixer_task_model.is_copy)
+        
+        # step 2: 启动任务
+        self.mix_controller.start_task(mixer_task_model.task_id)
+        self._log_step("配料完成", "SUCCESS")
+
+
+        self._wait_for_confirm("请确认配料完成，然后点击确认", timeout=300)
+
+        # step 3: 停止任务
+        self.mix_controller.stop_task(mixer_task_model.task_id)
+        # self.mix_controller.cancel_task(mixer_task_model.task_id)
+        self._log_step("配料完成，结束流程", "SUCCESS")
 
 mix_flow_manager = MixFlowManager(mixer_controller)
