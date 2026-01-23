@@ -1,11 +1,27 @@
+from asyncio.constants import ACCEPT_RETRY_DELAY
 from fastapi import APIRouter
 import struct
-from utils import cent_format_time, CENT_CMDS, CENT_FAULT_MAP, CENT_RUN_MAP, \
-    CENT_ROTOR_MAP, CENT_DOOR_MAP
-from logger import sys_logger as logger
 
-# 导入全局实例
-from devices.centrifuge_core import centrifuge_controller
+from utils import cent_format_time
+from logger import sys_logger as logger
+from devices.centrifuge_core import (
+    centrifuge_controller,
+    CENT_RUN_MAP,
+    CENT_ROTOR_MAP,
+    CENT_DOOR_MAP,
+    CENT_FAULT_MAP,
+    CENT_LID_MAP
+)
+from schemas.centrifuge import (
+    CentrifugeStatusResponse,
+    CentrifugeSpeedResponse,
+    CentrifugeTimeResponse,
+    CentrifugeSpeedRequest,
+    CentrifugeTimeRequest,
+    CentrifugeActionRequest,
+    CentrifugeActionResponse,
+    CentrifugeStatus
+)
 
 router = APIRouter(prefix="/api/centrifuge", tags=["离心机"])
 
@@ -13,60 +29,57 @@ router = APIRouter(prefix="/api/centrifuge", tags=["离心机"])
 # 1. 离心机模块
 # ==========================================
 
-@router.get("/status", tags=["离心机"])
-def get_centrifuge_status():
-    raw_res = centrifuge_controller.send_raw(CENT_CMDS["read_all"])
-    if raw_res["status"] != "success": return raw_res
-    data = raw_res["bytes"]
-    if len(data) < 33: return {"error": "数据不完整"}
-
-    def gv(i):
-        return struct.unpack('>H', bytes(data[3 + i * 2:3 + i * 2 + 2]))[0]
-
-    actual_rpm = gv(1)
-    fault_code = gv(4)
-    run_state = gv(5)
-    door_window = gv(6)
-    door_lid = gv(11)
-    rotor_state = gv(12)
-    remain_time = gv(13)
-    centrifuge_force = gv(2)
-    run_time = gv(3)
-    setted_rpm = gv(8)
-    setted_time = gv(9)
-
-    return {
-        "面板数据": {
-            "当前转速": f"{actual_rpm} RPM",
-            "剩余时间": cent_format_time(remain_time),
-            "运行状态": CENT_RUN_MAP.get(run_state, f"未知({run_state})"),
-            "机器状态文字": CENT_ROTOR_MAP.get(rotor_state, "静止")
-            },
-        "门状态对比": {
-            "1_门窗状态(2206H)": CENT_DOOR_MAP.get(door_window, f"未知代码:{door_window}")
-            },
-        "安全监控": {
-            "故障状态": CENT_FAULT_MAP.get(fault_code, f"未知故障码: {fault_code}"),
-            "最终判定安全": (fault_code == 0) and (door_window == 2 or door_lid == 2)
-            },
-        "详细参数": {
-            "实际转速_raw": actual_rpm,
-            "实际离心力": centrifuge_force,
-            "设置转速": setted_rpm,
-            "设置时间": setted_time,
-            "运行时间": run_time
-        }
-    }
+@router.get("/status", response_model=CentrifugeStatusResponse, tags=["离心机"])
+def get_centrifuge_status() -> CentrifugeStatusResponse:
+    result = centrifuge_controller.get_running_status()
+    if result.get("status") != "success": 
+        return CentrifugeStatusResponse(code="500", message=result.get("message", "未知错误"))
+    else:
+        data: dict = result.get("data")
+        if not data:
+            return CentrifugeStatusResponse(code="500", message="数据不完整")
+        else:
+            parsed_data = CentrifugeStatus(
+                actual_rpm = data.get('actual_rpm'),
+                remain_time = cent_format_time(data.get('remain_time')),
+                run_state = CENT_RUN_MAP.get(data.get('run_state', 0)),
+                rotor_state = CENT_ROTOR_MAP.get(data.get('rotor_state'), "静止"),
+                fault_code = CENT_FAULT_MAP.get(data.get('fault_code'), "未知故障码"),
+                door_window_state = CENT_DOOR_MAP.get(data.get('door_window'), "未知代码"),
+                door_lid_state = CENT_LID_MAP.get(data.get('door_lid'), "未知代码"),
+                actual_time = data.get('run_time'),
+                setted_rpm = data.get('setted_rpm'),
+                setted_time = data.get('setted_time'),
+                centrifuge_force = data.get('centrifuge_force')
+            )
+        return CentrifugeStatusResponse(code="200", message="离心机状态获取成功", data=parsed_data)
 
 
-@router.post("/{action}", tags=["离心机"])
-def control_centrifuge(action: str):
+@router.post("/{action}", response_model=CentrifugeActionResponse, tags=["离心机"])
+def control_centrifuge(request: CentrifugeActionRequest) -> CentrifugeActionResponse:
+    action = request.action
     logger.log(f"离心机手动操作: {action}", "INFO")
-    if action in CENT_CMDS: centrifuge_controller.send_raw(CENT_CMDS[action])
-    return {"action": action}
+    result = centrifuge_controller.control_centrifuge(action)
+    if result.get("status") == "success":
+        return CentrifugeActionResponse(code="200", message=result.get("message", "离心机操作成功"), data=action)
+    else:
+        return CentrifugeActionResponse(code="500", message=result.get("message", "未知错误"))
 
 
-@router.post("/speed/{rpm}", tags=["离心机"])
-def set_cent_speed(rpm: int):
-    cmd = centrifuge_controller.build_write_command(0x2101, rpm)
-    return centrifuge_controller.send_raw(cmd)
+@router.post("/speed/{rpm}", response_model=CentrifugeSpeedResponse, tags=["离心机"])
+def set_cent_speed(request: CentrifugeSpeedRequest) -> CentrifugeSpeedResponse:
+    '''设置离心机转速'''
+    result = centrifuge_controller.set_speed(request.rpm)
+    if result.get("status") == "success":
+        return CentrifugeSpeedResponse(code="200", message=result.get("message", "离心机转速设置成功"), data=request.rpm)
+    else:
+        return CentrifugeSpeedResponse(code="500", message=result.get("message", "未知错误"))
+
+@router.post("/time/{time}", response_model=CentrifugeTimeResponse, tags=["离心机"])
+def set_cent_time(request: CentrifugeTimeRequest) -> CentrifugeTimeResponse:
+    '''设置离心机时间'''
+    result = centrifuge_controller.set_time(request.time)
+    if result.get("status") == "success":
+        return CentrifugeTimeResponse(code="200", message=result.get("message", "离心机时间设置成功"), data=request.time)
+    else:
+        return CentrifugeTimeResponse(code="500", message=result.get("message", "未知错误"))

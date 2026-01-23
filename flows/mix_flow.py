@@ -11,7 +11,7 @@ from devices.mixer_core import MixerController, mixer_controller
 from logger import sys_logger as logger
 
 class MixFlowManager:
-    """混合料工作流管理器"""
+    """配料工序工作流管理器"""
 
     def __init__(self, mix_controller: MixerController, logger=logger):
         self.mix_controller = mix_controller
@@ -81,4 +81,4 @@ class MixFlowManager:
         # self.mix_controller.cancel_task(mixer_task_model.task_id)
         self._log_step("配料完成，结束流程", "SUCCESS")
 
-mix_flow_manager = MixFlowManager(mixer_controller)
+mix_flow_mgr = MixFlowManager(mixer_controller)

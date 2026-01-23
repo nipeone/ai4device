@@ -1,6 +1,5 @@
 import time
 from .base import PLCControlledDevice
-from utils import CENT_CMDS, CENT_FAULT_MAP, CENT_RUN_MAP, CENT_ROTOR_MAP, CENT_DOOR_MAP, cent_format_time
 import config
 
 class RobotController(PLCControlledDevice):
@@ -102,19 +101,19 @@ class RobotController(PLCControlledDevice):
     def toggle_m_10(self, bit: int):
         """翻转M10.x区信号。
         在bit输入位地址(0 - 5)，执行后将对应的M10.x信号取反。
-        M10.0	任务下发	标签3	反转控制
-        M10.1	任务清除	标签8	反转控制
-        M10.2	开高温炉门	标签7	反转控制
-        M10.3   开高温炉盖  标签1   反转控制
-        M10.4   开离心机门  标签2   反转控制
-        M10.5	机器人停止	标签13	反转控制。"""
+        - M10.0	任务下发	标签3	反转控制
+        - M10.1	任务清除	标签8	反转控制
+        - M10.2	开高温炉门	标签7	反转控制
+        - M10.3 开高温炉盖  标签1   反转控制
+        - M10.4 开离心机门  标签2   反转控制
+        - M10.5	机器人停止	标签13	反转控制。"""
         if not self.connect():
             return False
         return self.toggle_m(10, bit)
 
     def dispatch_task(self):
         """下发任务
-        M10.0 是启动信号
+        - M10.0 是启动信号
         """
         if not self.connect():
             return False

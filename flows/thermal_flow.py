@@ -1,4 +1,5 @@
 import struct
+from typing import Optional
 import time
 import json
 import threading
@@ -6,17 +7,14 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from snap7.type import Area
 
-from utils import CENT_CMDS
 from logger import sys_logger as logger
 from devices.robot_core import RobotController
 from devices.door_core import DoorController
 from devices.centrifuge_core import CentrifugeController
-from devices.oven_core import OvenController
+from devices.oven_core import OvenController, OvenLidActionCode, OvenActionCode
 
-# ==========================================
-# 6. 流程管理器 (核心修复：增加失败中断逻辑)
-# ==========================================
-class FlowManager:
+class ThermalFlowManager:
+    """高温炉、离心机热处理工序工作流管理器"""
     def __init__(self, robot_controller: RobotController,
             door_controller: DoorController, 
             centrifuge_controller: CentrifugeController, 
@@ -55,6 +53,28 @@ class FlowManager:
         self.logger.log(">>> 人工已确认门盖状态，流程继续 <<<", "SUCCESS")
         self.confirm_event.set()
 
+    def _log_step(self, message: str, level: str = "INFO"):
+        """记录步骤日志"""
+        self.current_step_info = message
+        self.logger.log(f"[热处理流程] {message}", level)
+
+    def _wait_for_confirm(self, message: str, timeout: Optional[float] = None):
+        """等待人工确认"""
+        self._log_step(f"等待确认: {message}", "WARN")
+        self.confirm_event.clear()
+        
+        start_time = time.time()
+        while not self.confirm_event.is_set():
+            if not self.running:
+                return False
+            if timeout and (time.time() - start_time) > timeout:
+                self._log_step(f"确认超时: {message}", "ERROR")
+                return False
+            time.sleep(0.5)
+        
+        self._log_step(f"确认通过: {message}", "SUCCESS")
+        return True
+
     def load(self, shelf_id, oven_id, qty):
         """上料流程（货架 -> 炉子）
         执行后系统将自动打开对应炉盖与门，并暂停等待人工确认。
@@ -84,6 +104,10 @@ class FlowManager:
         })
         self.running = True
         self.logger.log(f"流程A启动: 货架{shelf_id} -> 炉子{oven_id}", "INFO")
+
+    def fire(self):
+        """启动高温炉"""
+        self._log_step("热处理完成，结束流程", "SUCCESS")
 
     def unload(self, oven_id, slot_id, shelf_id):
         """出料流程（炉子 -> 离心机 -> 货架）。
@@ -136,6 +160,23 @@ class FlowManager:
         })
         self.running = True
         self.logger.log(f"流程B启动: 炉子{oven_id} -> 货架{shelf_id}", "INFO")
+
+    def run(self):
+        #########################################################
+        # 1. 上料 #
+        #########################################################
+        # TODO 怎么获取货架、炉子、数量？
+        shelf_id = 1; oven_id = 1; qty = 1; 
+        self.load(shelf_id, oven_id, qty)
+        self.user_confirm()
+        #########################################################
+        # 2. 下料 #
+        #########################################################
+        # TODO 怎么获取炉子、槽位、货架号？
+        oven_id = 1; slot_id = 1; shelf_id = 1; 
+        self.unload(oven_id, slot_id, shelf_id)
+        self.user_confirm()
+        self._log_step("热处理完成，结束流程", "SUCCESS")
 
     def _worker(self):
         """后台线程"""
@@ -215,7 +256,7 @@ class FlowManager:
                 try:
                     if task['auto_device'] == 'oven_complex':
                         self.logger.log(f"自动动作: 打开炉盖{task['dev_id']}及玻璃门{task['door_id']}", "INFO")
-                        self.oven_controller.control_lid(task['dev_id'], 1)
+                        self.oven_controller.control_lid(task['dev_id'], OvenLidActionCode.open)
                         if task['door_id'] > 0:
                             self.door_controller.send_command(task['door_id'], 'open')
 
@@ -227,22 +268,10 @@ class FlowManager:
 
                 # 2.2 等待人工确认
                 if task.get('need_confirm', False):
-                    self.logger.log(
-                        f"!!! 流程暂停 !!! 等待人工确认: 设备就位后，请点击[确认]",
-                        "WARN")
-                    self.current_step_info = f"等待确认: 检查炉{task['dev_id']}门盖状态"
-
-                    # 清除信号，开始阻塞等待
-                    self.confirm_event.clear()
-
-                    # 循环等待，每秒检查一次是否取消流程
-                    while not self.confirm_event.is_set():
-                        if not self.running: break  # 如果流程被强制停止，跳出
-                        time.sleep(0.5)
+                    if not self._wait_for_confirm(f"检查炉{task['dev_id']}门盖状态", timeout=300):
+                        continue
 
                     if not self.running: continue  # 停止后的清理
-
-                    self.current_step_info = f"确认通过，继续执行: {task['desc']}"
 
                 # 2.3 发送PLC确认信号 (M10.x) - 模拟Utils的交互
                 # 任务5,6 (Oven) 需要 M10.2 (Glass) 和 M10.3 (Oven)
@@ -334,7 +363,7 @@ class FlowManager:
 
                 try:
                     self.logger.log(f"自动关闭: 炉盖{task['dev_id']}", "INFO")
-                    self.oven_driver.control_lid(task['dev_id'], 2)
+                    self.oven_controller.control_lid(task['dev_id'], OvenLidActionCode.close)
 
                     if task['door_id'] > 0:
                         self.logger.log(f"自动关闭: 玻璃门{task['door_id']}", "INFO")
@@ -347,4 +376,4 @@ from devices.robot_core import robot_controller
 from devices.door_core import door_controller
 from devices.centrifuge_core import centrifuge_controller
 from devices.oven_core import oven_controller
-flow_mgr = FlowManager(robot_controller, door_controller, centrifuge_controller, oven_controller)
+thermal_flow_mgr = ThermalFlowManager(robot_controller, door_controller, centrifuge_controller, oven_controller)

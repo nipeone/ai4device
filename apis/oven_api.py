@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from logger import sys_logger as logger
 
 # 导入全局实例
-from devices.oven_core import oven_controller
+from devices.oven_core import oven_controller, OvenActionCode, OvenLidActionCode
 
 router = APIRouter(prefix="/api/oven", tags=["炉子"])
 
@@ -40,6 +40,13 @@ def get_oven_status():
 @router.post("/{id}/{action}", tags=["炉子"])
 def control_oven(id: int, action: int):
     logger.log(f"炉子手动操作: ID={id}, Action={action}", "INFO")
-    success, msg = oven_controller.control_lid(id, action)
+    success, msg = oven_controller.control_oven(id, OvenActionCode(action))
     if not success: logger.log(f"炉子操作失败: {msg}", "ERROR")
+    return {"status": success, "msg": msg}
+
+@router.post("/{id}/{action}/lid", tags=["炉盖"])
+def control_oven_lid(id: int, action: int):
+    logger.log(f"炉盖手动操作: ID={id}, Action={action}", "INFO")
+    success, msg = oven_controller.control_lid(id, OvenLidActionCode(action))
+    if not success: logger.log(f"炉盖操作失败: {msg}", "ERROR")
     return {"status": success, "msg": msg}

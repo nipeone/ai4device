@@ -13,7 +13,7 @@ from logger import sys_logger as logger
 
 
 class XRDFlowManager:
-    """XRD衍射仪试验流程管理器"""
+    """XRD衍射仪工序工作流管理器"""
     
     def __init__(self, xrd_controller: XRDController, logger=logger):
         self.xrd_controller = xrd_controller
@@ -436,4 +436,4 @@ class XRDFlowManager:
         self._log_step("设备关闭完成", "SUCCESS")
         return True
 
-xrd_flow_manager = XRDFlowManager(xrd_controller)
+xrd_flow_mgr = XRDFlowManager(xrd_controller)

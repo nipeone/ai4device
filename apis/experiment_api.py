@@ -2,9 +2,9 @@ from fastapi import APIRouter, File, UploadFile
 from logger import sys_logger as logger
 
 # 导入全局实例
-from flows.flow_manager import flow_mgr
-from devices.mixer_core import mixer_controller
-from devices.xrd_core import xrd_controller
+from flows.thermal_flow import thermal_flow_mgr
+from flows.mix_flow import mix_flow_mgr
+from flows.xrd_flow import xrd_flow_mgr
 from services.mixer import mixer_service
 
 router = APIRouter(prefix="/api/experiment", tags=["实验"])
@@ -33,36 +33,24 @@ async def start_experiment(file: UploadFile = File(...)):
         mixer_model = await mixer_service.parse_mixer_tasks_from_excel(contents)
         logger.log(f"Excel文件解析成功，任务名称: {mixer_model.task_name}", "INFO")
 
-        # 创建任务
-        mixer_controller.add_task(mixer_model.task_name, mixer_model.layout_list, mixer_model.task_id, is_audit_log=mixer_model.is_audit_log)
-        # 启动任务
-        mixer_controller.start()
+        mix_flow_mgr.run(mixer_model)
 
         #########################################################
         # 2. 熔封 #
         #########################################################
 
+        # TODO API为完成，人工确认熔封完成
 
         #########################################################
-        # 3. 上料 #
+        # 3. 热处理 # 包括高温炉、离心机工序
         #########################################################
-        # TODO 怎么获取货架、炉子、数量？
-        shelf_id = 1; oven_id = 1; qty = 1; 
-        flow_mgr.load(shelf_id, oven_id, qty)
 
-        flow_mgr.user_confirm()
+        thermal_flow_mgr.run()
 
         #########################################################
-        # 4. 下料 #
+        # 4. xrd衍射仪 #
         #########################################################
-        # TODO 怎么获取炉子、槽位、货架号？
-        oven_id = 1; slot_id = 1; shelf_id = 1; 
-        flow_mgr.unload(oven_id, slot_id, shelf_id)
-
-        #########################################################
-        # 5. xrd衍射仪 #
-        #########################################################
-        xrd_controller.start()
+        xrd_flow_mgr.run()
 
         return {
             "status": "success",

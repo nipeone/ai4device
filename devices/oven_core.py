@@ -1,9 +1,20 @@
+from typing import Literal
 import zmq
 import json
 import time
+import struct
+from enum import Enum
 from .base import SocketControlledDevice
 import config
 
+class OvenActionCode(Enum):
+    start = 0
+    stop = 1
+    pause = 2
+
+class OvenLidActionCode(Enum):
+    open = 1
+    close = 2
 
 class OvenController(SocketControlledDevice):
     """Socket（ZMQ）控制的高温炉设备"""
@@ -192,13 +203,16 @@ class OvenController(SocketControlledDevice):
         self.realtime_data = latest_data
         return latest_data
 
-    def control_lid(self, rid, action_code):
+    def control_lid(self, oven_id: int, action_code: OvenLidActionCode):
         """
         控制炉盖
-        :param rid: 炉子ID
-        :param action_code: 动作代码 (1=开, 2=关)
+        :param oven_id: 炉子ID
+        :param action_code: 动作代码
+            - open=开
+            - close=关
         """
         if not self.is_connected:
+            self.result = {"status": "error", "message": "设备未连接"}
             return False, "设备未连接"
         
         # CTRL socket需要独立管理，因为它连接到不同的地址
@@ -213,19 +227,19 @@ class OvenController(SocketControlledDevice):
                 return False, str(e)
         
         try:
-            buffer = bytes([0x03, rid, 250, 0, action_code])
+            buffer = bytes([0x03, oven_id, 250, 0, action_code.value])
             self._ctrl_socket.send(buffer)
             response = self._ctrl_socket.recv_string()
             success = response != "False"
             if success:
-                self.message = f"炉{rid}盖控制成功，动作: {action_code}"
-                self.result = {"status": "success", "rid": rid, "action": action_code}
+                self.message = f"炉{oven_id}盖控制成功，动作: {action_code}"
+                self.result = {"status": "success", "oven_id": oven_id, "action": action_code}
             else:
-                self.message = f"炉{rid}盖控制失败"
+                self.message = f"炉{oven_id}盖控制失败"
                 self.result = {"status": "fail", "message": "底层返回False"}
             return success, response
         except Exception as e:
-            self.message = f"炉{rid}盖控制异常: {str(e)}"
+            self.message = f"炉{oven_id}盖控制异常: {str(e)}"
             self.result = {"status": "error", "message": str(e)}
             # CTRL socket出错时清理，下次使用时重新创建
             if self._ctrl_socket:
@@ -242,15 +256,65 @@ class OvenController(SocketControlledDevice):
                 self._ctrl_context = None
             return False, str(e)
 
-    def start(self):
-        """启动设备（高温炉启动需要指定具体参数）"""
-        self.message = "高温炉设备就绪，请使用control_lid控制具体炉子"
-        self.result = {"status": "success", "message": "设备就绪"}
+    def control_oven(self, oven_id: int, action_code: OvenActionCode):
+        """控制炉子
+        
+        :param oven_id: 炉子ID
+        :param action_code: 动作代码
+            - start=启动
+            - stop=停止
+            - pause=暂停
+        """
+        if not self.is_connected:
+            self.result = {"status": "error", "message": "设备未连接"}
+            return False, "设备未连接"
+        
+        # CTRL socket需要独立管理，因为它连接到不同的地址
+        # 如果CTRL socket不存在或已断开，重新创建
+        if not self._ctrl_socket or not self._ctrl_context:
+            try:
+                self._ctrl_context, self._ctrl_socket = self._create_socket(zmq.REQ, 3000)  # 创建CTRL socket
+                self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
+            except Exception as e:
+                self.message = f"CTRL Socket创建失败: {str(e)}"
+                self.result = {"status": "error", "message": str(e)}
+                return False, str(e)
+        
+        try:
+            packet = struct.pack("BBBBB", 0x01, oven_id, 27, 0, action_code.value)
+            self._ctrl_socket.send(packet)
+            response = self._ctrl_socket.recv_string()
+            if response != "True":
+                self.message = f"炉{oven_id}控制失败"
+                self.result = {"status": "error", "message": f"设备 {oven_id} 执行命令: {action_code}"}
+                return False
+            else:
+                self.message = f"炉{oven_id}控制成功"
+                self.result = {"status": "success", "message": "控制成功"}
+                return True
+        except Exception as e:
+            self.message = f"炉{oven_id}控制异常: {str(e)}"
+            self.result = {"status": "error", "message": str(e)}
+            return False
 
-    def stop(self):
-        """停止设备"""
-        self.message = "高温炉设备已停止"
-        self.result = {"status": "success", "message": "设备已停止"}
+    def start(self, oven_id: int):
+        """启动设备（高温炉启动需要指定具体参数）
+        
+        :param oven_id: 炉子ID
+        """
+        return self.control_oven(oven_id, OvenActionCode.start)
+
+    def stop(self, oven_id: int):
+        """停止设备
+        :param oven_id: 炉子ID
+        """
+        return self.control_oven(oven_id, OvenActionCode.stop)
+
+    def pause(self, oven_id: int):
+        """暂停设备
+        :param oven_id: 炉子ID
+        """
+        return self.control_oven(oven_id, OvenActionCode.pause)
 
     def get_status(self) -> dict:
         """获取设备状态"""
