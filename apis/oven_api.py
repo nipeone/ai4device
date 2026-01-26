@@ -4,6 +4,7 @@ from logger import sys_logger as logger
 
 # 导入全局实例
 from devices.oven_core import oven_controller, OvenActionCode, OvenLidActionCode
+from schemas.oven import OvenStatusResponse, OvenStatus
 
 router = APIRouter(prefix="/api/oven", tags=["炉子"])
 
@@ -50,3 +51,29 @@ def control_oven_lid(id: int, action: int):
     success, msg = oven_controller.control_lid(id, OvenLidActionCode(action))
     if not success: logger.log(f"炉盖操作失败: {msg}", "ERROR")
     return {"status": success, "msg": msg}
+
+@router.get("/status/running", tags=["炉子"], response_model=OvenStatusResponse)
+def get_oven_running_status() -> OvenStatusResponse:
+    result = oven_controller.get_running_status()
+    if result.get("status") != "success":
+        return OvenStatusResponse(code="500", message=result.get("message", "未知错误"))
+    else:
+        data: list = result.get("data")
+        oven_status_list = []
+        for item in data:
+            oven_status_list.append(OvenStatus(
+                    device_name=item["设备名称"],
+                    device_address=item["设备地址"],
+                    device_type=item["仪表型号"],
+                    online_status=item["在线状态"],
+                    actual_temperature=item["实际温度"],
+                    setted_temperature=item["设定温度"],
+                    running_curve=item["运行曲线"],
+                    status_display=item["状态显示"],
+                    end_time=item["结束时间"],
+                    status=item["状态"]
+                ))
+        if not data:
+            return OvenStatusResponse(code="500", message="数据不完整")
+        else:
+            return OvenStatusResponse(code="200", message="炉子运行状态获取成功", data=oven_status_list)

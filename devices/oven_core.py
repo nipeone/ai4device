@@ -1,11 +1,15 @@
 from typing import Literal
+from datetime import datetime, timedelta
 import zmq
 import json
 import time
 import struct
 from enum import Enum
+
 from .base import SocketControlledDevice
 import config
+
+from schemas.oven import OvenStatus
 
 class OvenActionCode(Enum):
     start = 0
@@ -67,10 +71,12 @@ class OvenController(SocketControlledDevice):
             self.device_list = data if isinstance(data, list) else []
             
             self.message = "高温炉设备连接成功"
+            self.result = {"status": "success", "message": self.message}
             return True
         except Exception as e:
             self.is_connected = False
             self.message = f"高温炉设备连接失败: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
             self._cleanup_socket()
             return False
 
@@ -107,6 +113,7 @@ class OvenController(SocketControlledDevice):
         # 调用父类方法清理主socket
         super().disconnect()
         self.message = "高温炉设备已断开连接"
+        self.result = {"status": "success", "message": self.message}
 
     def get_device_list(self):
         """获取所有设备的基础列表"""
@@ -123,7 +130,7 @@ class OvenController(SocketControlledDevice):
             self.is_connected = False
             return []
 
-    def get_specific_device_info(self, sid):
+    def get_specific_device_info(self, sid)->dict:
         """
         获取特定设备的详细信息
         用于读取：运行曲线名称、仪表型号等详细字段
@@ -136,7 +143,8 @@ class OvenController(SocketControlledDevice):
             data = json.loads(self.socket.recv_string())
             if isinstance(data, list) and len(data) > 0:
                 return data[0]
-            return data
+            else:
+                return {}
         except Exception as e:
             # 如果socket出错，标记为未连接
             self.is_connected = False
@@ -203,6 +211,57 @@ class OvenController(SocketControlledDevice):
         self.realtime_data = latest_data
         return latest_data
 
+    def set_curve_points(self, oven_id: int, curve_points: list):
+        """
+        设置炉子温度运行曲线
+        :param oven_id: 炉子ID
+        :param curve_points: 运行曲线点列表
+        """
+        if not self.is_connected:
+            self.result = {"status": "error", "message": "设备未连接"}
+            return self.result
+        
+        # CTRL socket需要独立管理，因为它连接到不同的地址
+        # 如果CTRL socket不存在或已断开，重新创建
+        if not self._ctrl_socket or not self._ctrl_context:
+            try:
+                self._ctrl_context, self._ctrl_socket = self._create_socket(zmq.REQ, 5000)  # 创建CTRL socket
+                self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
+            except Exception as e:
+                self.message = f"CTRL Socket创建失败: {str(e)}"
+                self.result = {"status": "error", "message": str(e)}
+                return self.result
+
+        try:
+            current_addr = 80  # 858P 固定起始地址
+            for i, point in enumerate(curve_points):
+                # 温度下传 (倍率 10)
+                temp_bytes = struct.pack('>h', int(point['temp'] * 10.0))
+                self._ctrl_socket.send(struct.pack("BBB", 0x01, oven_id, current_addr & 0xFF) + temp_bytes)
+                if self._ctrl_socket.recv_string() != "True":
+                    self.message = f"第{i + 1}段温度写入失败"
+                    self.result = {"status": "error", "message": self.message}
+                    return self.result
+                time.sleep(0.02)
+
+                # 时间下传 (倍率 10)
+                time_addr = current_addr + 1
+                time_bytes = struct.pack('>h', int(point['time'] * 10.0))
+                self._ctrl_socket.send(struct.pack("BBB", 0x01, oven_id, time_addr & 0xFF) + time_bytes)
+                if self._ctrl_socket.recv_string() != "True":
+                    self.message = f"第{i + 1}段时间写入失败"
+                    self.result = {"status": "error", "message": self.message}
+                    return self.result
+                time.sleep(0.02)
+                current_addr = time_addr + 1
+            self.message = f"设置温度曲线成功, 实际发送段数: {len(curve_points)}"
+            self.result = {"status": "success", "message": self.message}
+            return self.result
+        except Exception as e:
+            self.message = f"炉{oven_id}运行曲线设置异常: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
+
     def control_lid(self, oven_id: int, action_code: OvenLidActionCode):
         """
         控制炉盖
@@ -213,7 +272,7 @@ class OvenController(SocketControlledDevice):
         """
         if not self.is_connected:
             self.result = {"status": "error", "message": "设备未连接"}
-            return False, "设备未连接"
+            return self.result
         
         # CTRL socket需要独立管理，因为它连接到不同的地址
         # 如果CTRL socket不存在或已断开，重新创建
@@ -224,7 +283,7 @@ class OvenController(SocketControlledDevice):
             except Exception as e:
                 self.message = f"CTRL Socket创建失败: {str(e)}"
                 self.result = {"status": "error", "message": str(e)}
-                return False, str(e)
+                return self.result
         
         try:
             buffer = bytes([0x03, oven_id, 250, 0, action_code.value])
@@ -233,14 +292,14 @@ class OvenController(SocketControlledDevice):
             success = response != "False"
             if success:
                 self.message = f"炉{oven_id}盖控制成功，动作: {action_code}"
-                self.result = {"status": "success", "oven_id": oven_id, "action": action_code}
+                self.result = {"status": "success", "message": self.message}
             else:
                 self.message = f"炉{oven_id}盖控制失败"
-                self.result = {"status": "fail", "message": "底层返回False"}
-            return success, response
+                self.result = {"status": "error", "message": self.message}
+            return self.result
         except Exception as e:
             self.message = f"炉{oven_id}盖控制异常: {str(e)}"
-            self.result = {"status": "error", "message": str(e)}
+            self.result = {"status": "error", "message": self.message}
             # CTRL socket出错时清理，下次使用时重新创建
             if self._ctrl_socket:
                 try:
@@ -254,7 +313,7 @@ class OvenController(SocketControlledDevice):
                 except:
                     pass
                 self._ctrl_context = None
-            return False, str(e)
+            return self.result
 
     def control_oven(self, oven_id: int, action_code: OvenActionCode):
         """控制炉子
@@ -266,8 +325,9 @@ class OvenController(SocketControlledDevice):
             - pause=暂停
         """
         if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            return False, "设备未连接"
+            self.message = "设备未连接"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
         
         # CTRL socket需要独立管理，因为它连接到不同的地址
         # 如果CTRL socket不存在或已断开，重新创建
@@ -277,25 +337,25 @@ class OvenController(SocketControlledDevice):
                 self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
             except Exception as e:
                 self.message = f"CTRL Socket创建失败: {str(e)}"
-                self.result = {"status": "error", "message": str(e)}
-                return False, str(e)
+                self.result = {"status": "error", "message": self.message}
+                return self.result
         
         try:
             packet = struct.pack("BBBBB", 0x01, oven_id, 27, 0, action_code.value)
             self._ctrl_socket.send(packet)
             response = self._ctrl_socket.recv_string()
             if response != "True":
-                self.message = f"炉{oven_id}控制失败"
-                self.result = {"status": "error", "message": f"设备 {oven_id} 执行命令: {action_code}"}
-                return False
+                self.message = f"炉{oven_id}执行{action_code}命令失败"
+                self.result = {"status": "error", "message": self.message}
+                return self.result
             else:
-                self.message = f"炉{oven_id}控制成功"
-                self.result = {"status": "success", "message": "控制成功"}
-                return True
+                self.message = f"炉{oven_id}执行{action_code}命令成功"
+                self.result = {"status": "success", "message": self.message}
+                return self.result
         except Exception as e:
             self.message = f"炉{oven_id}控制异常: {str(e)}"
-            self.result = {"status": "error", "message": str(e)}
-            return False
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
     def start(self, oven_id: int):
         """启动设备（高温炉启动需要指定具体参数）
@@ -319,15 +379,43 @@ class OvenController(SocketControlledDevice):
     def get_status(self) -> dict:
         """获取设备状态"""
         # 获取实时数据（短时间采样）
-        realtime_data = self.get_realtime_data(duration=1.0)
-        
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "device_list": self.device_list,
-            "realtime_data": realtime_data,
-            "device_count": len(self.device_list)
-        }
+        return self.status
+
+    def get_running_status(self) -> dict:
+        """获取设备运行状态"""
+        realtime_map = self.get_realtime_data(duration=1.0)
+        device_list = self.get_device_list()
+        summary_result = []
+        for device in device_list:
+            sid = int(device.get('SlaveID') or device.get('SlaveId') or device.get('ID') or 0)
+            name = device.get('DeviceName') or f"Slave{sid}"
+            dtype = device.get('DeviceType') or ""
+            rt_data = realtime_map.get(sid)
+            item = {
+                "设备名称": name, 
+                "设备地址": sid,
+                "仪表型号": dtype,
+                "在线状态": "离线",
+                "实际温度": None, 
+                "设定温度": None, 
+                "状态显示": "无数据",
+                "结束时间": "-", 
+                "状态": None
+            }
+            if rt_data:
+                device_info = self.get_specific_device_info(sid)
+                item["运行曲线"] = device_info.get('CurrentRunName') or device_info.get('CurrentRun') or device_info.get('CurrentWave') or "-"
+                item["在线状态"] = "在线"
+                item["实际温度"] = rt_data['pv']
+                item["设定温度"] = rt_data['sv']
+                item["状态"] = "停止" if rt_data['status'] == 1 else "开始"
+                minutes_remaining = rt_data['runtime_raw']
+                if dtype == "858P": minutes_remaining /= 10.0
+                item["结束时间"] = (datetime.now() + timedelta(minutes=minutes_remaining)).strftime("%Y-%m-%d %H:%M") if minutes_remaining > 0 else "-"
+                item["状态显示"] = f"阶段{rt_data['step']} 剩余{minutes_remaining / 60.0:.1f}h"
+
+                summary_result.append(item)
+        return {"status": "success", "data": summary_result}
 
     def get_result(self) -> dict:
         """获取设备结果"""

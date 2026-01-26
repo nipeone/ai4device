@@ -52,7 +52,7 @@ def get_centrifuge_status() -> CentrifugeStatusResponse:
                 setted_time = data.get('setted_time'),
                 centrifuge_force = data.get('centrifuge_force')
             )
-        return CentrifugeStatusResponse(code="200", message="离心机状态获取成功", data=parsed_data)
+        return CentrifugeStatusResponse(code="200", message="离心机运行状态获取成功", data=parsed_data)
 
 
 @router.post("/{action}", response_model=CentrifugeActionResponse, tags=["离心机"])
