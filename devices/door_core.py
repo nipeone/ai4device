@@ -4,6 +4,8 @@ from .base import SocketControlledDevice
 import config
 from typing import Literal
 
+from schemas.door import DoorActionCode
+
 
 class DoorController(SocketControlledDevice):
     """Socket（ZMQ）控制的防护门设备"""
@@ -47,14 +49,23 @@ class DoorController(SocketControlledDevice):
 
     def get_door_status(self, door_index: int):
         """
-        获取门的实时状态
-        发送: [0x02, SlaveID, 0, 0, 0]
+        获取指定编号玻璃门的实时状态
+        Args:
+            door_index: int
+        Returns:
+            门状态: bool
+                True: 开启
+                False: 关闭
         """
         if not self.is_connected or not self.socket:
-            return "设备未连接"
+            self.message = "设备未连接"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
         if not (1 <= door_index <= 6):
-            return "无效编号"
+            self.message = "无效编号"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
         slave_id = (door_index + 1) // 2
         is_channel_1 = (door_index % 2 == 0)
@@ -67,33 +78,45 @@ class DoorController(SocketControlledDevice):
             if len(response_bytes) == 2:
                 target_byte = response_bytes[1] if is_channel_1 else response_bytes[0]
                 is_open = (target_byte & 1) == 1
-                status = "开启" if is_open else "关闭"
-                self.door_status_cache[door_index] = status
-                return status
+                # status = "open" if is_open else "close"
+                self.door_status_cache[door_index] = is_open
+                self.message = f"门{door_index}状态获取成功: {is_open}"
+                self.result = {"status": "success", "message": self.message, "data": is_open}
+                return self.result
             else:
-                return "数据异常"
+                self.message = "数据异常"
+                self.result = {"status": "error", "message": self.message}
+                return self.result
 
         except zmq.Again:
-            return "通信超时"
+            self.message = "通信超时"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
         except Exception as e:
             # 如果socket出错，标记为未连接
             self.is_connected = False
-            return f"错误:{str(e)}"
+            self.message = f"获取门{door_index}状态异常: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
-    def send_command(self, door_index: int, action: Literal["open", "close"]):
+    def send_command(self, door_index: int, action: DoorActionCode):
         """
         控制开门/关门
         - door_index: 门编号
         - action: "open" 开门 "close" 关门
         """
-        if not self.is_connected:
-            return {"status": "error", "message": "设备未连接"}
+        if not self.is_connected or not self.socket:
+            self.message = "设备未连接"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
         if not (1 <= door_index <= 6):
-            return {"status": "error", "message": "门编号必须是 1-6"}
+            self.message = "门编号必须是 1-6"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
         # === 互斥逻辑检查 ===
-        if action == "open":
+        if action == DoorActionCode.open:
             # 寻找同组的搭档
             if door_index % 2 != 0:
                 partner_index = door_index + 1
@@ -108,7 +131,7 @@ class DoorController(SocketControlledDevice):
                 print(f"[系统自动] 检测到互斥：门{partner_index}当前开启，正在尝试自动关闭...")
 
                 # 递归调用自己，把搭档关掉
-                close_result = self.send_command(partner_index, "close")
+                close_result = self.send_command(partner_index, DoorActionCode.close)
 
                 # 如果关门失败，为了安全，终止当前开门操作
                 if close_result.get("status") != "success":
@@ -120,16 +143,9 @@ class DoorController(SocketControlledDevice):
                 # 稍微停顿一下，给硬件反应时间
                 time.sleep(0.5)
 
-        # === 控制逻辑 ===
-        if not self.is_connected or not self.socket:
-            self.message = "设备未连接"
-            self.result = {"status": "error", "message": "设备未连接"}
-            return {"status": "error", "message": "设备未连接"}
-
         slave_id = (door_index + 1) // 2
         channel = 0 if door_index % 2 == 1 else 1
-        value = 1 if action == "open" else 2
-
+        value = action.value
         # 控制指令: 0x01 ...
         buffer = bytes([0x01, slave_id, channel, 0, value])
 
@@ -139,22 +155,26 @@ class DoorController(SocketControlledDevice):
 
             if frame_string == "True":
                 self.message = f"门{door_index} {action}操作成功"
-                self.result = {"status": "success", "door": door_index, "action": action}
-                return {"status": "success", "door": door_index, "action": action}
+                self.result = {
+                    "status": "success", 
+                    "message": self.message,
+                    "data": {"door": door_index, "action": action}
+                }
+                return self.result
             else:
                 self.message = f"门{door_index} {action}操作失败：底层返回False"
-                self.result = {"status": "fail", "message": "底层返回False"}
-                return {"status": "fail", "message": "底层返回False"}
+                self.result = {"status": "fail", "message": self.message}
+                return self.result
         except zmq.Again:
             self.message = f"门{door_index} {action}操作超时"
-            self.result = {"status": "error", "message": "通信超时"}
-            return {"status": "error", "message": "通信超时"}
+            self.result = {"status": "error", "message": self.message}
+            return self.result
         except Exception as e:
             # 如果socket出错，标记为未连接
             self.is_connected = False
             self.message = f"门{door_index} {action}操作异常: {str(e)}"
-            self.result = {"status": "error", "message": str(e)}
-            return {"status": "error", "message": str(e)}
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
     def start(self):
         """启动设备（门设备无需启动操作）"""
@@ -168,15 +188,7 @@ class DoorController(SocketControlledDevice):
 
     def get_status(self) -> dict:
         """获取设备状态"""
-        status_dict = {}
-        for door_id in range(1, 7):
-            status_dict[door_id] = self.get_door_status(door_id)
-        
-        return {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "doors": status_dict
-        }
+        return self.status
 
     def get_result(self) -> dict:
         """获取设备结果"""
