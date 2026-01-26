@@ -9,7 +9,8 @@ from apis.experiment_api import router as experiment_router
 from apis.system_api import router as system_router
 from apis.mixer_api import router as mixer_router
 from logger import sys_logger as logger
-import config  # 导入配置模块以加载环境变量
+import config
+from utils import initialize_oven_curve_db
 from devices.robot_core import robot_controller
 from devices.mixer_core import mixer_controller
 from devices.centrifuge_core import centrifuge_controller
@@ -32,6 +33,8 @@ async def lifespan(app: FastAPI):
         logger.log(f"高温炉连接失败: {oven_controller.get_message()}", "ERROR")
     if not door_controller.connect():
         logger.log(f"玻璃门连接失败: {door_controller.get_message()}", "ERROR")
+
+    initialize_oven_curve_db()
     yield  # 运行应用程序
 
     # Shutdown

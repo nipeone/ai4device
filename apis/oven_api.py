@@ -4,59 +4,71 @@ from logger import sys_logger as logger
 
 # 导入全局实例
 from devices.oven_core import oven_controller, OvenActionCode, OvenLidActionCode
-from schemas.oven import OvenStatusResponse, OvenStatus
+from schemas.oven import (
+    OvenStatusResponse,
+    OvenStatus,
+    OvenCurveResponse,
+    OvenCurveRequest,
+    CurvePoint,
+    OvenCurveListResponse,
+    OvenCurveListItem,
+    OvenCurveByNameRequest,
+    OvenActionRequest,
+    OvenActionResponse,
+    OvenLidActionRequest
+)
+from services.oven import oven_service
 
 router = APIRouter(prefix="/api/oven", tags=["炉子"])
 
-# ==========================================
-# 2. 炉子模块
-# ==========================================
-@router.get("/status", tags=["炉子"])
-def get_oven_status():
-    devices_list = oven_controller.get_device_list()
-    realtime_map = oven_controller.get_realtime_data(duration=10.0)
-    summary_result = []
-    for device in devices_list:
-        sid = int(device.get('SlaveID') or device.get('SlaveId') or device.get('ID') or 0)
-        item = {"设备名称": device.get('DeviceName') or f"J{sid:02d}", "设备地址": sid,
-                "仪表型号": device.get('DeviceType') or "858P", "在线状态": "离线", "实际温度": 0.0, "设定温度": 0.0,
-                "运行曲线": "-", "状态显示": "无数据", "结束时间": "-", "状态": "未知"}
-        rt_data = realtime_map.get(sid)
-        if rt_data:
-            detail = oven_controller.get_specific_device_info(sid)
-            curve_name = detail.get('CurrentRunName') or detail.get('CurrentRun') or detail.get('CurrentWave') or "-"
-            item["在线状态"] = "在线";
-            item["实际温度"] = rt_data['pv'];
-            item["设定温度"] = rt_data['sv'];
-            item["运行曲线"] = curve_name;
-            item["状态"] = "停止" if rt_data['status'] == 1 else "运行"
-            minutes = rt_data['runtime_raw']
-            if item["仪表型号"] == "858P": minutes /= 10.0
-            item["状态显示"] = f"阶段{rt_data['step']} 剩余{(minutes / 60.0):.1f}h"
-            if minutes > 0: item["结束时间"] = (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M")
-        summary_result.append(item)
-    return {"设备列表": summary_result}
+@router.post("/control/lid", tags=["炉盖"])
+def control_oven_lid(request: OvenLidActionRequest):
+    '''控制炉盖
+    
+    Args:
+        oven_id: int
+        action: 
+            0: open
+            1: close
+    Returns:
+        code: int
+        message: str
+        data: str
+    '''
+    logger.log(f"炉盖手动操作: ID={request.oven_id}, Action={request.action}", "INFO")
+    result = oven_controller.control_lid(request.oven_id, OvenLidActionCode(request.action))
+    if result.get("status") != "success": 
+        return OvenActionResponse(code=500, message=result.get("message", "未知错误"))
+    else:
+        return OvenActionResponse(code=200, message="炉盖操作成功")
 
+@router.post("/control", tags=["炉子"])
+def control_oven(request: OvenActionRequest):
+    '''控制炉子
+    
+    Args:
+        oven_id: int
+        action: 
+            0: start
+            1: stop
+            2: pause
+    Returns:
+        code: int
+        message: str
+        data: str
+    '''
+    logger.log(f"炉子手动操作: ID={request.oven_id}, Action={request.action}", "INFO")
+    result = oven_controller.control_oven(request.oven_id, OvenActionCode(request.action))
+    if result.get("status") != "success": 
+        return OvenActionResponse(code=500, message=result.get("message", "未知错误"))
+    else:
+        return OvenActionResponse(code=200, message="炉子操作成功")
 
-@router.post("/{id}/{action}", tags=["炉子"])
-def control_oven(id: int, action: int):
-    logger.log(f"炉子手动操作: ID={id}, Action={action}", "INFO")
-    success, msg = oven_controller.control_oven(id, OvenActionCode(action))
-    if not success: logger.log(f"炉子操作失败: {msg}", "ERROR")
-    return {"status": success, "msg": msg}
-
-@router.post("/{id}/{action}/lid", tags=["炉盖"])
-def control_oven_lid(id: int, action: int):
-    logger.log(f"炉盖手动操作: ID={id}, Action={action}", "INFO")
-    success, msg = oven_controller.control_lid(id, OvenLidActionCode(action))
-    if not success: logger.log(f"炉盖操作失败: {msg}", "ERROR")
-    return {"status": success, "msg": msg}
-
-@router.get("/status/running", tags=["炉子"], response_model=OvenStatusResponse)
-def get_oven_running_status() -> OvenStatusResponse:
+@router.get("/status", tags=["炉子"], response_model=OvenStatusResponse)
+def get_oven_status() -> OvenStatusResponse:
     result = oven_controller.get_running_status()
     if result.get("status") != "success":
-        return OvenStatusResponse(code="500", message=result.get("message", "未知错误"))
+        return OvenStatusResponse(code=500, message=result.get("message", "未知错误"))
     else:
         data: list = result.get("data")
         oven_status_list = []
@@ -74,6 +86,76 @@ def get_oven_running_status() -> OvenStatusResponse:
                     status=item["状态"]
                 ))
         if not data:
-            return OvenStatusResponse(code="500", message="数据不完整")
+            return OvenStatusResponse(code=500, message="数据不完整")
         else:
-            return OvenStatusResponse(code="200", message="炉子运行状态获取成功", data=oven_status_list)
+            return OvenStatusResponse(code=200, message="炉子运行状态获取成功", data=oven_status_list)
+
+@router.post("/curve", tags=["炉子"], response_model=OvenCurveResponse)
+def set_oven_curve(request: OvenCurveRequest) -> OvenCurveResponse:
+    '''上传炉子运行曲线
+    
+    Args:
+        request: OvenCurveRequest
+    Returns:
+        OvenCurveResponse
+    '''
+
+    DEVICE_TYPE = "858P"
+
+    # 1. 预处理数据 (保持 858P 逻辑)
+    processed_points: list[CurvePoint] = []
+    for p in request.points:
+        if p.time == 0: continue
+        if p.time < 0:
+            processed_points.append(CurvePoint(temperature=p.temperature, time=-121.0))
+            break
+        else:
+            processed_points.append(CurvePoint(temperature=p.temperature, time=p.time))
+
+    if not processed_points:
+        return OvenCurveResponse(code=500, message="没有有效的曲线数据")
+
+    # 2. 执行硬件下传
+    result = oven_controller.set_curve_points(request.oven_id, processed_points)
+
+    # 3. 自主选择保存逻辑
+    if result.get("status") == "success" and request.curve_name:
+        oven_service.persist_oven_curve(request.oven_id, request.curve_name, processed_points)
+
+    if result.get("status") != "success":
+        return OvenCurveResponse(code=500, message=result.get("message", "未知错误"))
+    else:
+        return OvenCurveResponse(code=200, message="炉子运行曲线设置成功", data=processed_points)
+
+@router.get("/curve", tags=["炉子"], response_model=OvenCurveListResponse)
+def get_oven_curve_list() -> OvenCurveListResponse:
+    '''查询已保存工艺列表
+    
+    Returns:
+        OvenCurveListResponse
+    '''
+
+    curve_list = oven_service.get_oven_curve_list()
+    if not curve_list:
+        return OvenCurveListResponse(code=500, message="没有已保存工艺")
+    else:
+        return OvenCurveListResponse(code=200, message="炉子运行曲线列表获取成功", data=curve_list)
+
+@router.post("/curve/name", tags=["炉子"], response_model=OvenCurveResponse)
+def set_oven_curve_by_name(request: OvenCurveByNameRequest) -> OvenCurveResponse:
+    '''直接调用数据库里存好的曲线，不用重新填表
+    
+    Args:
+        request: OvenCurveByNameRequest
+    Returns:
+        OvenCurveResponse
+    '''
+    processed_points =  oven_service.get_oven_curve_by_name(request.curve_name)
+    if not processed_points:
+        return OvenCurveResponse(code=500, message="没有找到该工艺曲线")
+
+    result = oven_controller.set_curve_points(request.oven_id, processed_points)
+    if result.get("status") != "success":
+        return OvenCurveResponse(code=500, message=result.get("message", "未知错误"))
+    else:
+        return OvenCurveResponse(code=200, message="炉子运行曲线设置成功", data=processed_points)

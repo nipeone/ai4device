@@ -1,24 +1,15 @@
-from typing import Literal
+from typing import Literal, Optional
 from datetime import datetime, timedelta
 import zmq
 import json
 import time
 import struct
-from enum import Enum
 
 from .base import SocketControlledDevice
+from schemas.oven import CurvePoint
 import config
 
-from schemas.oven import OvenStatus
-
-class OvenActionCode(Enum):
-    start = 0
-    stop = 1
-    pause = 2
-
-class OvenLidActionCode(Enum):
-    open = 1
-    close = 2
+from schemas.oven import OvenStatus, OvenActionCode, OvenLidActionCode
 
 class OvenController(SocketControlledDevice):
     """Socket（ZMQ）控制的高温炉设备"""
@@ -211,7 +202,7 @@ class OvenController(SocketControlledDevice):
         self.realtime_data = latest_data
         return latest_data
 
-    def set_curve_points(self, oven_id: int, curve_points: list):
+    def set_curve_points(self, oven_id: int, curve_points: list[CurvePoint]):
         """
         设置炉子温度运行曲线
         :param oven_id: 炉子ID

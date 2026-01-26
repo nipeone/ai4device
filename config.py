@@ -32,6 +32,9 @@ FURNACE_REQ_ADDR = os.getenv("FURNACE_REQ_ADDR", "tcp://127.0.0.1:49206")
 FURNACE_SUB_ADDR = os.getenv("FURNACE_SUB_ADDR", "tcp://127.0.0.1:49200")
 FURNACE_CTRL_ADDR = os.getenv("FURNACE_CTRL_ADDR", "tcp://127.0.0.1:49201")
 
+# ===================== 高温炉曲线点地址配置 =====================
+FURNACE_DB_PATH=os.getenv("FURNACE_DB_PATH", "assets/oven_curve.sqlite")
+
 # ===================== 配料设备配置 =====================
 MIXER_API_BASE_URL = os.getenv("MIXER_API_BASE_URL", "http://127.0.0.1:4669")
 MIXER_USERNAME = os.getenv("MIXER_USERNAME", "admin")
