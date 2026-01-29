@@ -4,6 +4,17 @@ from typing import Dict, Any, List, Optional
 from .base import RestAPIControlledDevice, DeviceStatus
 import config
 
+from schemas.mixer import (
+    GetTaskInfoRequest,
+    GetTaskInfoResponse,
+    AddTaskRequest,
+    AddTaskResponse,
+    BatchStartTaskRequest,
+    OpTaskRequest,
+    GetTokenRequest,
+    GetTokenResponse
+)
+from logger import sys_logger as logger
 
 class MixerController(RestAPIControlledDevice):
     """
@@ -30,15 +41,18 @@ class MixerController(RestAPIControlledDevice):
     def connect(self):
         """连接配料设备（检测API是否可达），获取Token"""
         try:
-            payload = {
-                "username": self.username,
-                "password": self.password
-            }
+            payload = GetTokenRequest(
+                username=self.username,
+                password=self.password
+            )
             # 尝试获取任务信息来检测连接
-            response = requests.post(f"{self.api_base_url}/api/Token", json=payload, timeout=5)
+            response = requests.post(f"{self.api_base_url}/api/Token", json=payload.model_dump(), timeout=5)
+            print("-"*20)
+            print(response.json())
             if response.status_code == 200:
-                self.api_token = response.json()["access_token"]
-                self.api_token_type = response.json()["token_type"]
+                data = GetTokenResponse.model_validate_json(response.json())
+                self.api_token = data.access_token
+                self.api_token_type = data.token_type
                 self.api_headers["Authorization"] = f"{self.api_token_type} {self.api_token}"
                 self.is_connected = True
                 self.message = "配料设备连接成功"
@@ -46,16 +60,24 @@ class MixerController(RestAPIControlledDevice):
                 return True
             else:
                 self.is_connected = False
+                self.api_token = None
+                self.api_token_type = None
+                self.api_headers = {}
                 self.message = f"获取Token失败，状态码：{response.status_code}"
+                self.status = DeviceStatus.disconnected
                 return False
         except requests.exceptions.RequestException as e:
             self.is_connected = False
             self.message = f"获取Token失败: {str(e)}"
+            self.status = DeviceStatus.disconnected
             return False
 
     def disconnect(self):
         """断开配料设备连接"""
         self.is_connected = False
+        self.current_task_id = None
+        self.current_task_status = None
+        self.task_info_cache = {}
         self.api_token = None
         self.api_token_type = None
         self.api_headers = {}
@@ -72,38 +94,34 @@ class MixerController(RestAPIControlledDevice):
             return {"status": "error", "message": "设备未连接"}
 
         try:
-            payload = {}
-            if task_id is not None:
-                payload["task_id"] = task_id
+            if task_id is None:
+                return {"status": "error", "message": "任务id不能为空"}
+            payload = GetTaskInfoRequest(task_id=task_id)
 
             response = requests.post(
                 f"{self.api_base_url}/api/GetTaskInfo",
-                json=payload,
+                json=payload.model_dump(),
                 timeout=10,
                 headers=self.api_headers
             )
             response.raise_for_status()
-            data = response.json()
+            data = GetTaskInfoResponse.model_validate_json(response.json())
             
             # 缓存任务信息
-            if "fid" in data or "task_id" in data:
-                tid = data.get("fid") or data.get("task_id")
-                if tid:
-                    self.task_info_cache[tid] = data
-                    self.current_task_id = tid
-                    self.current_task_status = data.get("status")
+            tid = data.task_id
+            self.task_info_cache[tid] = data
+            self.current_task_id = tid
+            self.current_task_status = data.status
             
             self.message = f"获取任务信息成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
-            return data
+            return self.result
         except requests.exceptions.RequestException as e:
             self.message = f"获取任务信息失败: {str(e)}"
-            self.result = {"status": "error", "message": str(e)}
-            return {"status": "error", "message": str(e)}
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
-    def add_task(self, task_name: str, layout_list: List[Dict[str, Any]], 
-                  task_id: int = 0, task_template_id_list: Optional[List[int]] = None,
-                  is_audit_log: bool = False, is_copy: bool = False) -> Dict[str, Any]:
+    def add_task(self, add_task_request: AddTaskRequest) -> Dict[str, Any]:
         """
         创建任务（AddTask）
         :param task_name: 任务名称
@@ -118,19 +136,7 @@ class MixerController(RestAPIControlledDevice):
             return {"status": "error", "message": "设备未连接"}
 
         try:
-            payload = {
-                "task_id": task_id,
-                "task_name": task_name,
-                "layout_list": layout_list
-            }
-            
-            if task_template_id_list is not None:
-                payload["task_template_id_list"] = task_template_id_list
-            if is_audit_log:
-                payload["is_audit_log"] = is_audit_log
-            if is_copy:
-                payload["is_copy"] = is_copy
-
+            payload = add_task_request.model_dump()
             response = requests.post(
                 f"{self.api_base_url}/api/AddTask",
                 json=payload,
@@ -138,15 +144,15 @@ class MixerController(RestAPIControlledDevice):
                 headers=self.api_headers
             )
             response.raise_for_status()
-            data = response.json()
+            data = AddTaskResponse.model_validate_json(response.json())
             
             # 更新当前任务信息
-            if "task_id" in data and data["task_id"]:
-                self.current_task_id = data["task_id"]
+            if data.task_id:
+                self.current_task_id = data.task_id
                 # 获取新创建的任务详情
                 self.get_task_info(self.current_task_id)
             
-            self.message = f"创建任务成功: task_id={data.get('task_id')}, task_name={task_name}"
+            self.message = f"创建任务成功: task_id={data.get('task_id')}"
             self.result = {"status": "success", "data": data}
             return data
         except requests.exceptions.RequestException as e:
@@ -204,6 +210,31 @@ class MixerController(RestAPIControlledDevice):
             return data
         except requests.exceptions.RequestException as e:
             self.message = f"启动任务失败: {str(e)}"
+            self.result = {"status": "error", "message": str(e)}
+            return {"status": "error", "message": str(e)}
+
+    def batch_start_task(self, task_id_list: List[int]) -> Dict[str, Any]:
+        """
+        批量启动任务（BatchStartTask）
+        :param task_id_list: 任务id列表
+        :return: 批量启动结果
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        
+        try:
+            payload = {"task_id_list": task_id_list}
+            response = requests.post(
+                f"{self.api_base_url}/api/BatchStartTask",
+                json=payload,
+                timeout=30,
+                headers=self.api_headers
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data
+        except requests.exceptions.RequestException as e:
+            self.message = f"批量启动任务失败: {str(e)}"
             self.result = {"status": "error", "message": str(e)}
             return {"status": "error", "message": str(e)}
 
@@ -295,25 +326,16 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": "没有当前任务"}
             return self.result
 
+    def get_running_status(self) -> dict:
+        """获取设备运行状态"""
+
+        if not self.current_task_id:
+            return {"status": "error", "message": "当前任务为空"}
+        return self.get_task_info(self.current_task_id)
+
     def get_status(self) -> dict:
         """获取设备状态"""
-        status_info = {
-            "name": self.device_name,
-            "connected": self.is_connected,
-            "current_task_id": self.current_task_id,
-            "current_task_status": self.current_task_status
-        }
-        
-        # 如果有当前任务，获取详细信息
-        if self.current_task_id:
-            try:
-                task_info = self.get_task_info(self.current_task_id)
-                if "status" not in task_info.get("status", {}):
-                    status_info["task_info"] = task_info
-            except:
-                pass
-        
-        return status_info
+        return self.status
 
     def get_result(self) -> dict:
         """获取设备结果"""

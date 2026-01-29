@@ -408,10 +408,8 @@ class SocketControlledDevice(BaseDevice):
         try:
             # 使用_create_socket方法创建context和socket
             self.context, self.socket = self._create_socket()
-            
+            self.socket.connect(self.socket_address)
             # 子类需要实现具体的连接测试逻辑
-            # 这里只设置基本状态，子类应该调用super().connect()后测试连接
-            self.is_connected = True
             return True
         except ImportError as e:
             self.is_connected = False

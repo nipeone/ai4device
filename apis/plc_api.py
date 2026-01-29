@@ -1,4 +1,5 @@
 from typing import Literal
+from unittest import result
 from fastapi import APIRouter, Body, HTTPException
 import time
 from snap7.type import Area
@@ -6,6 +7,7 @@ from logger import sys_logger as logger
 
 # 导入全局实例
 from devices.robot_core import robot_controller
+from schemas.robot import PlcStatus, RobotActionRequest, RobotActionResponse, PlcStatusResponse
 
 router = APIRouter(prefix="/api/plc", tags=["PLC"])
 
@@ -26,17 +28,21 @@ def get_plc_status():
          DB1.242 (系统状态) - 0=断线, 1=空闲, 2=执行中, 3=完成, 4=失败
          DB2.40 (任务状态) - 0=无任务, 1=有任务"""
     # 注意：此处不频繁调用 log，避免日志刷屏，仅在连接状态变化时由 connect 记录
-    return robot_controller.get_status()
-
+    result = robot_controller.get_status()
+    if result.get("status") == "success":
+        return PlcStatusResponse(code=200, message="PLC状态获取成功", data=result.get("data"))
+    else:
+        return PlcStatusResponse(code=500, message=result.get("message", "未知错误"))
 
 @router.post("/task", tags=["PLC"])
 def set_task(tid: int = Body(...), st: int = Body(...), qty: int = Body(...)):
     """写入 PLC 任务数据 (底层接口)。
     手动向 DB3 写入任务。需在 Body 中填写 tid (任务ID), st (站点), qty (数量)。一般仅供调试使用。"""
     success = robot_controller.write_task(tid, st, qty)
-    if not success:
-        raise HTTPException(status_code=500, detail=f"写入任务数据失败")
-    return {"success": success}
+    if success:
+        return RobotActionResponse(code=200, message="任务数据写入成功")
+    else:
+        return RobotActionResponse(code=500, message="写入任务数据失败")
 
 
 @router.post("/toggle_m/{bit}", tags=["PLC"])
@@ -53,9 +59,10 @@ def toggle_m(bit: int):
     if bit < 0 or bit > 5:
         raise ValueError("bit 必须在 0 到 5 之间")
     success = robot_controller.toggle_m(10, bit)
-    if not success:
-        raise HTTPException(status_code=500, detail=f"翻转控制M10.{bit}区信号失败")
-    return {"success": success}
+    if success:
+        return RobotActionResponse(code=200, message=f"翻转控制M10.{bit}区信号成功")
+    else:
+        return RobotActionResponse(code=500, message=f"翻转控制M10.{bit}区信号失败")
 
 
 @router.post("/pulse_m/{bit}", tags=["PLC"])
@@ -65,32 +72,29 @@ def pulse_m(bit: int):
     if bit < 0 or bit > 5:
         raise ValueError("bit 必须在 0 到 5 之间")
     success = robot_controller.pulse_m(10, bit)
-    if not success:
-        raise HTTPException(status_code=500, detail=f"点动控制M10.{bit}区信号失败")
-    return {"success": success}
+    if success:
+        return RobotActionResponse(code=200, message=f"点动控制M10.{bit}区信号成功")
+    else:
+        return RobotActionResponse(code=500, message=f"点动控制M10.{bit}区信号失败")
 
 
-@router.post("/robot/{action}", tags=["PLC"])
-def robot_act(action: Literal["reset", "toggle"]):
+@router.post("/robot/control", response_model=RobotActionResponse, tags=["PLC"])
+def robot_act(request: RobotActionRequest) -> RobotActionResponse:
     """控制 DB2 块中的机器人专用信号。
     在 action 参数中输入以下指令：
     reset: 对应 DB2.18.0 (机器人复位)。瞬动控制，用于清除机器人报警。
     toggle: 对应 DB2.18.4 (机器人启动/暂停)。反转控制，切换机器人的运行/暂停状态。"""
 
-    if action not in ["reset", "toggle"]:
-        raise HTTPException(status_code=400, detail=f"无效的机器人指令: {action}")
-
     if not robot_controller.connect():
-        raise HTTPException(status_code=500, detail=f"机器人操作{action}失败: PLC未连接")
+        return RobotActionResponse(code=500, message=f"机器人操作{request.action}失败: PLC未连接")
 
     success = False
-    if action == "reset":
+    if request.action == "reset":
         success = robot_controller.reset_robot()
-    elif action == "toggle":
+    elif request.action == "toggle":
         success = robot_controller.toggle_robot()
+    logger.log(f"发送机器人指令: {request.action}", "INFO")
+    if success:
+        return RobotActionResponse(code=200, message=f"机器人指令{request.action}成功")
     else:
-        raise HTTPException(status_code=400, detail=f"无效的机器人指令: {action}")
-    logger.log(f"发送机器人指令: {action}", "INFO")
-    if not success:
-        raise HTTPException(status_code=500, detail=f"机器人指令{action}失败")
-    return {"success": success}
+        return RobotActionResponse(code=500, message=f"机器人指令{request.action}失败")

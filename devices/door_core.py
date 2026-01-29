@@ -1,10 +1,11 @@
 import zmq
 import time
-from .base import SocketControlledDevice
+from .base import DeviceStatus, SocketControlledDevice
 import config
 from typing import Literal
 
 from schemas.door import DoorActionCode
+from logger import sys_logger as logger
 
 
 class DoorController(SocketControlledDevice):
@@ -29,15 +30,16 @@ class DoorController(SocketControlledDevice):
         try:
             # 连接socket到目标地址
             self.socket.connect(self.target_address)
+            self.is_connected = True
+            self.status = DeviceStatus.connected
+            self.message = "防护门设备连接成功"
+            logger.debug(f"connected to {self.target_address}")
             
             # 测试连接：尝试获取门状态
-            self.socket.send(bytes([0x02, 1, 0, 0, 0]))
-            self.socket.recv()
-            
-            self.message = "防护门设备连接成功"
             return True
         except Exception as e:
             self.is_connected = False
+            self.status = DeviceStatus.disconnected
             self.message = f"防护门设备连接失败: {str(e)}"
             self._cleanup_socket()
             return False
@@ -45,6 +47,8 @@ class DoorController(SocketControlledDevice):
     def disconnect(self):
         """断开ZMQ设备连接"""
         super().disconnect()  # 调用基类的断开逻辑
+        self.is_connected = False
+        self.status = DeviceStatus.disconnected
         self.message = "防护门设备已断开连接"
 
     def get_door_status(self, door_index: int):
@@ -89,6 +93,7 @@ class DoorController(SocketControlledDevice):
                 return self.result
 
         except zmq.Again:
+            self.is_connected = False
             self.message = "通信超时"
             self.result = {"status": "error", "message": self.message}
             return self.result
@@ -127,7 +132,7 @@ class DoorController(SocketControlledDevice):
             partner_status = self.get_door_status(partner_index)
 
             # 如果搭档是开着的，必须先把它关掉
-            if partner_status == "开启":
+            if partner_status.get("status") == "success" and partner_status.get("data"):
                 print(f"[系统自动] 检测到互斥：门{partner_index}当前开启，正在尝试自动关闭...")
 
                 # 递归调用自己，把搭档关掉
@@ -152,6 +157,7 @@ class DoorController(SocketControlledDevice):
         try:
             self.socket.send(buffer)
             frame_string = self.socket.recv_string()
+            print(f"-"*10+"     "+frame_string)
 
             if frame_string == "True":
                 self.message = f"门{door_index} {action}操作成功"
@@ -163,7 +169,7 @@ class DoorController(SocketControlledDevice):
                 return self.result
             else:
                 self.message = f"门{door_index} {action}操作失败：底层返回False"
-                self.result = {"status": "fail", "message": self.message}
+                self.result = {"status": "error", "message": self.message}
                 return self.result
         except zmq.Again:
             self.message = f"门{door_index} {action}操作超时"

@@ -55,7 +55,7 @@ def get_centrifuge_status() -> CentrifugeStatusResponse:
         return CentrifugeStatusResponse(code=200, message="离心机运行状态获取成功", data=parsed_data)
 
 
-@router.post("/{action}", response_model=CentrifugeActionResponse, tags=["离心机"])
+@router.post("/control", response_model=CentrifugeActionResponse, tags=["离心机"])
 def control_centrifuge(request: CentrifugeActionRequest) -> CentrifugeActionResponse:
     action = request.action
     logger.log(f"离心机手动操作: {action}", "INFO")
@@ -66,7 +66,7 @@ def control_centrifuge(request: CentrifugeActionRequest) -> CentrifugeActionResp
         return CentrifugeActionResponse(code=500, message=result.get("message", "未知错误"))
 
 
-@router.post("/speed/{rpm}", response_model=CentrifugeSpeedResponse, tags=["离心机"])
+@router.post("/speed", response_model=CentrifugeSpeedResponse, tags=["离心机"])
 def set_cent_speed(request: CentrifugeSpeedRequest) -> CentrifugeSpeedResponse:
     '''设置离心机转速'''
     result = centrifuge_controller.set_speed(request.rpm)
@@ -75,7 +75,7 @@ def set_cent_speed(request: CentrifugeSpeedRequest) -> CentrifugeSpeedResponse:
     else:
         return CentrifugeSpeedResponse(code=500, message=result.get("message", "未知错误"))
 
-@router.post("/time/{time}", response_model=CentrifugeTimeResponse, tags=["离心机"])
+@router.post("/time", response_model=CentrifugeTimeResponse, tags=["离心机"])
 def set_cent_time(request: CentrifugeTimeRequest) -> CentrifugeTimeResponse:
     '''设置离心机时间'''
     result = centrifuge_controller.set_time(request.time)

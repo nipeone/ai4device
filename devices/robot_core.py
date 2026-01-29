@@ -2,6 +2,8 @@ import time
 from .base import PLCControlledDevice
 import config
 
+from schemas.robot import PlcStatus, TaskData, RobotStatus
+
 class RobotController(PLCControlledDevice):
     """PLC控制的机器人手臂设备"""
     
@@ -25,42 +27,44 @@ class RobotController(PLCControlledDevice):
          DB2.40 (任务状态) - 0=无任务, 1=有任务。"""
         if not self.is_connected:
             return {
-                "name": self.device_name,
-                "connected": False,
+                "status": "error",
                 "message": "设备未连接"
             }
         return {
-        "PLC连接状态": self.is_connected,
-        "M 区控制信号状态": [self.read_m(10, i) for i in range(7)],
-        "任务数据": {
-            "工号": self.read_db_int(3, 0),
-            "工位类型/炉号": self.read_db_int(3, 2),
-            "数量": self.read_db_int(3, 4)
-        },
-        "robot": {
-            "原点状态": self.read_db_bit(1, 218, 0),
-            "夹具状态": self.read_db_bit(1, 218, 1),
-            "系统状态": self.read_db_int(1, 242, 4),
-            "机器人启动/暂停": self.read_db_bit(2, 18, 4),
-            "任务状态": self.read_db_int(2, 40, 4)
+            "status": "success",
+            "data": PlcStatus(
+                plc_connected=self.is_connected,
+                m_signals=[self.read_m(10, i) for i in range(7)],
+                task_data=TaskData(
+                    tid=self.read_db_int(3, 0),
+                    st=self.read_db_int(3, 2),
+                    qty=self.read_db_int(3, 4)
+                ),
+                robot=RobotStatus(
+                    home_status=self.read_db_bit(1, 218, 0),
+                    fixture_status=self.read_db_bit(1, 218, 1),
+                    system_status=self.read_db_int(1, 242, 4),
+                    robot_status=self.read_db_bit(2, 18, 4),
+                    task_status=self.read_db_int(2, 40, 4)
+                )
+            )
         }
-    }
 
-    def get_home_status(self):
+    def get_home_status(self) -> bool:
         """获取原点状态: DB1.218.0 (原点状态) 
         - 1=原点
         - 0=非原点
         """
         return self.read_db_bit(1, 218, 0)
 
-    def get_task_status(self):
+    def get_task_status(self) -> int:
         """获取任务状态: DB2.40 (任务状态) 
         - 0=无任务
         - 1=有任务
         """
         return self.read_db_int(2, 40, 4)
 
-    def get_system_status(self):
+    def get_system_status(self) -> int:
         """获取系统状态: DB1.242 (系统状态) 
         - 0=断线
         - 1=空闲
@@ -70,20 +74,20 @@ class RobotController(PLCControlledDevice):
         """
         return self.read_db_int(1, 242, 4)
 
-    def get_robot_status(self):
+    def get_robot_status(self) -> bool:
         """获取机器人状态: DB2.18.4 (机器人启动/暂停) 
         - 1=启动
         - 0=暂停
         """
         return self.read_db_bit(2, 18, 4)
 
-    def reset_robot(self):
+    def reset_robot(self) -> bool:
         """机器人复位
         对应 DB2.18.0 (机器人复位)。瞬动控制，用于清除机器人报警。
         """
         return self.pulse_db(2, 18)
 
-    def toggle_robot(self):
+    def toggle_robot(self) -> bool:
         """机器人启动/暂停
         对应 DB2.18.4 (机器人启动/暂停)。反转控制，切换机器人的运行/暂停状态。
         """
@@ -98,7 +102,7 @@ class RobotController(PLCControlledDevice):
         self.write_db_bytes(2, 18, v)
         return True
 
-    def toggle_m_10(self, bit: int):
+    def toggle_m_10(self, bit: int) -> bool:
         """翻转M10.x区信号。
         在bit输入位地址(0 - 5)，执行后将对应的M10.x信号取反。
         - M10.0	任务下发	标签3	反转控制
@@ -111,7 +115,7 @@ class RobotController(PLCControlledDevice):
             return False
         return self.toggle_m(10, bit)
 
-    def dispatch_task(self):
+    def dispatch_task(self) -> bool:
         """下发任务
         - M10.0 是启动信号
         """
@@ -119,7 +123,7 @@ class RobotController(PLCControlledDevice):
             return False
         return self.pulse_m(10, 0)
 
-    def write_task(self, tid, st, qty):
+    def write_task(self, tid: int, st: int, qty: int) -> bool:
         """写入任务数据到DB3
         - tid: 任务ID DB3.0
         - st: 站点 DB3.2

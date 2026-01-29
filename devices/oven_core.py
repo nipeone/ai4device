@@ -5,6 +5,7 @@ import json
 import time
 import struct
 
+from logger import sys_logger as logger
 from .base import SocketControlledDevice
 from schemas.oven import CurvePoint
 import config
@@ -55,6 +56,7 @@ class OvenController(SocketControlledDevice):
         try:
             # 连接主socket到REQ地址
             self.socket.connect(self.REQ_ADDR)
+            logger.debug(f"成功连接高温炉：{self.REQ_ADDR}")
             
             # 测试连接：获取设备列表
             self.socket.send_string("DeviceDal.GetList@@@")

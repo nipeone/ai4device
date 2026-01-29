@@ -8,7 +8,9 @@ import json
 import struct
 import time
 from typing import Dict, Any, Optional
-from .base import BaseDevice
+
+from logger import sys_logger as logger
+from .base import BaseDevice, DeviceStatus
 import config
 
 
@@ -121,9 +123,13 @@ class XRDController(BaseDevice):
             
             # 连接到设备
             self.socket.connect((self.host, self.port))
+            self.is_connected = True
+            self.status = DeviceStatus.connected
+            logger.debug(f"connect to {self.host}:{self.port}")
             
             # 测试连接：获取设备状态
             test_response = self.get_sample_status()
+            logger.debug(test_response)
             if test_response.get("status"):
                 self.is_connected = True
                 self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
@@ -136,6 +142,7 @@ class XRDController(BaseDevice):
                 return False
         except socket.timeout:
             self.is_connected = False
+            self.status = DeviceStatus.disconnected
             self.message = "XRD衍射仪连接超时"
             if self.socket:
                 try:
@@ -146,6 +153,7 @@ class XRDController(BaseDevice):
             return False
         except Exception as e:
             self.is_connected = False
+            self.status = DeviceStatus.disconnected
             self.message = f"XRD衍射仪设备连接失败: {str(e)}"
             if self.socket:
                 try:
@@ -164,6 +172,7 @@ class XRDController(BaseDevice):
                 pass
             self.socket = None
         self.is_connected = False
+        self.status = DeviceStatus.disconnected
         self.message = "XRD衍射仪设备已断开连接"
 
     # ===================== API命令实现 =====================
