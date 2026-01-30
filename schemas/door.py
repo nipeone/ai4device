@@ -10,7 +10,7 @@ class DoorActionCode(Enum):
 
 class DoorActionRequest(BaseModel):
     door_id: int = Field(..., description="门ID")
-    action: DoorActionCode = Field(..., description="动作", example=DoorActionCode.open)
+    action: DoorActionCode = Field(..., description="动作")
 
 class DoorActionResponse(BaseResponse):
     data: Optional[str] = Field(default=None, description="动作结果")

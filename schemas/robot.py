@@ -17,11 +17,11 @@ class RobotStatus(BaseModel):
     - robot_status: 机器人启动/暂停
     - task_status: 任务状态
     """
-    home_status: bool = Field(..., description="原点状态", example=True)
-    fixture_status: bool = Field(..., description="夹具状态", example=True)
-    system_status: int = Field(..., description="系统状态", example=1)
-    robot_status: bool = Field(..., description="机器人启动/暂停", example=True)
-    task_status: int = Field(..., description="任务状态", example=1)
+    home_status: bool = Field(..., description="原点状态")
+    fixture_status: bool = Field(..., description="夹具状态")
+    system_status: int = Field(..., description="系统状态")
+    robot_status: bool = Field(..., description="机器人启动/暂停")
+    task_status: int = Field(..., description="任务状态")
     
 class TaskData(BaseModel):
     """任务数据
@@ -30,9 +30,21 @@ class TaskData(BaseModel):
     - st: 站点
     - qty: 数量
     """
-    tid: int = Field(..., description="任务ID", example=123456)
-    st: int = Field(..., description="站点", example=1)
-    qty: int = Field(..., description="数量", example=10)
+    tid: int = Field(..., description="任务ID")
+    st: int = Field(..., description="站点")
+    qty: int = Field(..., description="数量")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [  # 复数examples，值为列表（支持多个示例）
+                {
+                    "tid": 123456,
+                    "st": 1,
+                    "qty": 10,
+                }
+            ]
+        }
+    }
 
 class PlcStatus(BaseModel):
     """PLC状态
@@ -42,15 +54,10 @@ class PlcStatus(BaseModel):
     - task_data: 任务数据
     - robot: 机器人状态
     """
-    plc_connected: bool = Field(..., description="PLC连接状态", example=True)
-    m_signals: list[bool] = Field(..., description="M区控制信号状态", example=[False, False, False, False, False, False, True])
-    task_data: TaskData = Field(..., description="任务数据", example=TaskData(tid=123456, st=1, qty=10))
-    robot: RobotStatus = Field(..., description="机器人状态", example=RobotStatus(
-        home_status=True, 
-        fixture_status=True, 
-        system_status=1, 
-        robot_status=True, 
-        task_status=1))
+    plc_connected: bool = Field(..., description="PLC连接状态")
+    m_signals: list[bool] = Field(..., description="M区控制信号状态")
+    task_data: TaskData = Field(..., description="任务数据")
+    robot: RobotStatus = Field(..., description="机器人状态")
 
     @field_validator('m_signals')
     def validate_m_signals(cls, v):
@@ -58,8 +65,26 @@ class PlcStatus(BaseModel):
             raise ValueError("M区控制信号状态必须为7个元素")
         return v
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [  # 复数examples，值为列表（支持多个示例）
+                {
+                    "plc_connected": True,
+                    "m_signals": [False, False, False, False, False, False, True],
+                    "task_data": TaskData(tid=123456, st=1, qty=10),
+                    "robot": RobotStatus(
+                        home_status=True, 
+                        fixture_status=True, 
+                        system_status=1, 
+                        robot_status=True, 
+                        task_status=1)
+                }
+            ]
+        }
+    }
+
 class RobotActionRequest(BaseModel):
-    action: RobotActionCode = Field(..., description="动作", example=RobotActionCode.reset)
+    action: RobotActionCode = Field(..., description="动作")
 
 class RobotActionResponse(BaseResponse):
     data: Optional[bool] = Field(default=None, description="动作结果")

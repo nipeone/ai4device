@@ -15,11 +15,11 @@ class OvenLidActionCode(Enum):
 
 class OvenActionRequest(BaseModel):
     oven_id: int = Field(..., description="炉子ID")
-    action: OvenActionCode = Field(..., description="动作", example=OvenActionCode.start)
+    action: OvenActionCode = Field(..., description="动作")
 
 class OvenLidActionRequest(BaseModel):
     oven_id: int = Field(..., description="炉子ID")
-    action: OvenLidActionCode = Field(..., description="动作", example=OvenLidActionCode.open)
+    action: OvenLidActionCode = Field(..., description="动作")
 
 class OvenActionResponse(BaseResponse):
     data: Optional[str] = Field(default=None, description="动作结果")
