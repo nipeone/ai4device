@@ -37,7 +37,7 @@ class XRDController(BaseDevice):
         发送命令到XRD设备并接收响应
         :param command: 命令名称
         :param content: 命令内容（可选）
-        :return: 响应字典
+        :return:
         """
         if not self.is_connected or not self.socket:
             return {
@@ -52,15 +52,17 @@ class XRDController(BaseDevice):
                 cmd_dict["content"] = content
             
             # 序列化为JSON
-            cmd_json = json.dumps(cmd_dict, ensure_ascii=False).encode('utf-8')
-            
+            cmd_json = json.dumps(cmd_dict).encode('utf-8')
+          
             # 发送命令长度（4字节，大端序）
             cmd_length = struct.pack('>I', len(cmd_json))
+
             self.socket.sendall(cmd_length)
             
             # 发送命令数据
             self.socket.sendall(cmd_json)
             
+            time.sleep(0.01)
             # 接收响应数据
             response = self._recv_response()
             return response
@@ -103,6 +105,8 @@ class XRDController(BaseDevice):
                 if not chunk:
                     raise Exception("接收响应数据失败")
                 data += chunk
+
+            logger.debug(f"获取到socket返回:{data.decode('utf-8')}")
             return json.loads(data.decode('utf-8'))
         except Exception as e:
             return {
@@ -126,20 +130,22 @@ class XRDController(BaseDevice):
             self.is_connected = True
             self.status = DeviceStatus.connected
             logger.debug(f"connect to {self.host}:{self.port}")
+            self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
+            return True
             
-            # 测试连接：获取设备状态
-            test_response = self.get_sample_status()
-            logger.debug(test_response)
-            if test_response.get("status"):
-                self.is_connected = True
-                self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
-                return True
-            else:
-                self.socket.close()
-                self.socket = None
-                self.is_connected = False
-                self.message = f"XRD衍射仪连接测试失败: {test_response.get('message', '未知错误')}"
-                return False
+            # # 测试连接：获取设备状态
+            # # test_response = self.get_sample_status()
+            # # logger.debug(test_response)
+            # if test_response.get("status"):
+            #     self.is_connected = True
+            #     self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
+            #     return True
+            # else:
+            #     self.socket.close()
+            #     self.socket = None
+            #     self.is_connected = False
+            #     self.message = f"XRD衍射仪连接测试失败: {test_response.get('message', '未知错误')}"
+            #     return False
         except socket.timeout:
             self.is_connected = False
             self.status = DeviceStatus.disconnected
@@ -204,8 +210,12 @@ class XRDController(BaseDevice):
             self.message = response.get("message", "不允许上样")
         return response
 
-    def send_sample_ready(self, sample_id: str, start_theta: float, 
-                          end_theta: float, increment: float, exp_time: float) -> Dict[str, Any]:
+    def send_sample_ready(self, 
+                          sample_id: Optional[str],
+                          start_theta: Optional[float], 
+                          end_theta: Optional[float],
+                          increment: Optional[float],
+                          exp_time: Optional[float]) -> Dict[str, Any]:
         """
         送样完成后，发送样品信息和采集参数
         :param sample_id: 样品标识符
@@ -222,6 +232,7 @@ class XRDController(BaseDevice):
             "increment": increment,
             "exp_time": exp_time
         }
+
         response = self._send_command("SEND_SAMPLE_READY", content)
         if response.get("status"):
             self.message = "采集参数发送成功"

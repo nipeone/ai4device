@@ -1,18 +1,18 @@
 import pandas as pd
 import io
 from typing import Any
-from schemas.mixer import MixerTaskModel
+from schemas.mixer import AddTaskRequest
 
 
 class MixerService:
     """
     配料任务处理服务
     """
-    async def parse_mixer_tasks_from_excel(self, excel_contents: bytes) -> MixerTaskModel:
+    async def parse_mixer_tasks_from_excel(self, excel_contents: bytes) -> AddTaskRequest:
         """
         从Excel内容解析配料任务
         :param excel_contents: Excel文件的字节内容
-        :return: 解析后的MixerTaskModel对象
+        :return: 解析后的AddTaskRequest对象
         """
         # 将字节内容转换为DataFrame
         df = pd.read_excel(io.BytesIO(excel_contents))

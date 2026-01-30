@@ -5,6 +5,7 @@ from logger import sys_logger as logger
 from flows.thermal_flow import thermal_flow_mgr
 from flows.mix_flow import mix_flow_mgr
 from flows.xrd_flow import xrd_flow_mgr
+from schemas.flow import StartXRDTestRequest
 
 router = APIRouter(prefix="/api/flow", tags=["流程"])
 
@@ -40,3 +41,31 @@ def get_thermal_flow_status():
         "step_info": thermal_flow_mgr.current_step_info,
         "remaining_tasks": len(thermal_flow_mgr.task_queue)
     }
+
+@router.post("/xrd/start", tags=["xrd衍射仪流程"])
+def start_xrd_single_sample_test(
+    request: StartXRDTestRequest
+):
+    """启动xrd单样品测试流程"""
+    xrd_flow_mgr.run(True, request.sample_id, request.start_theta, request.end_theta, request.increment, request.exp_time)
+    return {"msg": "xrd单样品测试流程已启动", "detail": f"样品{request.sample_id}测试完成"}
+
+@router.post("/xrd/stop", tags=["xrd衍射仪流程"])
+def stop_xrd_single_sample_test():
+    xrd_flow_mgr.stop()
+    return {"msg": "xrd已停止"}
+
+@router.post("/xrd/confirm", tags=["xrd衍射仪流程"])
+def confirm_xrd_single_sample_test():
+    """确认xrd单样品测试完成"""
+    xrd_flow_mgr.user_confirm()
+    return {"msg": "完成确认"}
+
+@router.get("/xrd/latest", tags=["xrd衍射仪流程"])
+def get_xrd_latest_data():
+    """确认xrd单样品测试完成"""
+    data = xrd_flow_mgr.get_latest_data()
+    if data is not None:
+        return {"msg": "获取成功", "data": data}
+    else:
+        return {"msg": "获取失败", "data": None}

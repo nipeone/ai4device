@@ -59,10 +59,10 @@ class OvenController(SocketControlledDevice):
             logger.debug(f"成功连接高温炉：{self.REQ_ADDR}")
             
             # 测试连接：获取设备列表
-            self.socket.send_string("DeviceDal.GetList@@@")
-            data = json.loads(self.socket.recv_string())
-            self.device_list = data if isinstance(data, list) else []
-            
+            # self.socket.send_string("DeviceDal.GetList@@@")
+            # data = json.loads(self.socket.recv_string())
+            # self.device_list = data if isinstance(data, list) else []
+            self.is_connected = True
             self.message = "高温炉设备连接成功"
             self.result = {"status": "success", "message": self.message}
             return True
@@ -229,7 +229,7 @@ class OvenController(SocketControlledDevice):
             current_addr = 80  # 858P 固定起始地址
             for i, point in enumerate(curve_points):
                 # 温度下传 (倍率 10)
-                temp_bytes = struct.pack('>h', int(point['temp'] * 10.0))
+                temp_bytes = struct.pack('>h', int(point.temperature * 10.0))
                 self._ctrl_socket.send(struct.pack("BBB", 0x01, oven_id, current_addr & 0xFF) + temp_bytes)
                 if self._ctrl_socket.recv_string() != "True":
                     self.message = f"第{i + 1}段温度写入失败"
@@ -239,7 +239,7 @@ class OvenController(SocketControlledDevice):
 
                 # 时间下传 (倍率 10)
                 time_addr = current_addr + 1
-                time_bytes = struct.pack('>h', int(point['time'] * 10.0))
+                time_bytes = struct.pack('>h', int(point.time * 10.0))
                 self._ctrl_socket.send(struct.pack("BBB", 0x01, oven_id, time_addr & 0xFF) + time_bytes)
                 if self._ctrl_socket.recv_string() != "True":
                     self.message = f"第{i + 1}段时间写入失败"
@@ -376,7 +376,7 @@ class OvenController(SocketControlledDevice):
 
     def get_running_status(self) -> dict:
         """获取设备运行状态"""
-        realtime_map = self.get_realtime_data(duration=1.0)
+        realtime_map = self.get_realtime_data(duration=10.0)
         device_list = self.get_device_list()
         summary_result = []
         for device in device_list:

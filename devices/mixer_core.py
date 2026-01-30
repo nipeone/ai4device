@@ -47,10 +47,8 @@ class MixerController(RestAPIControlledDevice):
             )
             # 尝试获取任务信息来检测连接
             response = requests.post(f"{self.api_base_url}/api/Token", json=payload.model_dump(), timeout=5)
-            print("-"*20)
-            print(response.json())
             if response.status_code == 200:
-                data = GetTokenResponse.model_validate_json(response.json())
+                data = GetTokenResponse(**response.json())
                 self.api_token = data.access_token
                 self.api_token_type = data.token_type
                 self.api_headers["Authorization"] = f"{self.api_token_type} {self.api_token}"
@@ -105,7 +103,7 @@ class MixerController(RestAPIControlledDevice):
                 headers=self.api_headers
             )
             response.raise_for_status()
-            data = GetTaskInfoResponse.model_validate_json(response.json())
+            data = GetTaskInfoResponse(**response.json())
             
             # 缓存任务信息
             tid = data.task_id
@@ -144,7 +142,11 @@ class MixerController(RestAPIControlledDevice):
                 headers=self.api_headers
             )
             response.raise_for_status()
-            data = AddTaskResponse.model_validate_json(response.json())
+            print("-"*20)
+            print(response.json())
+            if response.json().get("code") != 200:
+                return {"status": "error", "message": f"创建任务失败: {response.json().get('msg')}"}
+            data = AddTaskResponse(**response.json())
             
             # 更新当前任务信息
             if data.task_id:
@@ -152,13 +154,13 @@ class MixerController(RestAPIControlledDevice):
                 # 获取新创建的任务详情
                 self.get_task_info(self.current_task_id)
             
-            self.message = f"创建任务成功: task_id={data.get('task_id')}"
+            self.message = f"创建任务成功: task_id = {data.task_id}"
             self.result = {"status": "success", "data": data}
-            return data
+            return self.result
         except requests.exceptions.RequestException as e:
             self.message = f"创建任务失败: {str(e)}"
-            self.result = {"status": "error", "message": str(e)}
-            return {"status": "error", "message": str(e)}
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
     def start_task(self, task_id: int, skip_curr_taskunit: int = 1,
                    run_by_single_tube: int = 0, quick_cap: int = 1,
@@ -232,7 +234,7 @@ class MixerController(RestAPIControlledDevice):
             )
             response.raise_for_status()
             data = response.json()
-            return data
+            return {"status": "success", "data": data}
         except requests.exceptions.RequestException as e:
             self.message = f"批量启动任务失败: {str(e)}"
             self.result = {"status": "error", "message": str(e)}
@@ -302,11 +304,43 @@ class MixerController(RestAPIControlledDevice):
             
             self.message = f"取消任务成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
-            return data
+            return self.result
         except requests.exceptions.RequestException as e:
             self.message = f"取消任务失败: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
+
+    def del_task(self, task_id: int) -> Dict[str, Any]:
+        """
+        删除任务（DelTask）
+        :param task_id: 任务id
+        :return: 删除结果
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        try:
+            payload = {"task_id": task_id}
+            response = requests.post(
+                f"{self.api_base_url}/api/DeleteTask",
+                json=payload,
+                timeout=30,
+                headers=self.api_headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if task_id == self.current_task_id:
+                if "code" in data and data["code"] == 200:
+                    self.status = DeviceStatus.unknown
+                    self.current_task_id = None
+                    self.current_task_status = None
+            self.message = f"删除任务成功: task_id={task_id}"
+            self.result = {"status": "success", "data": data}
+            return self.result 
+        except requests.exceptions.RequestException as e:
+            self.message = f"删除任务失败: {str(e)}"
             self.result = {"status": "error", "message": str(e)}
-            return {"status": "error", "message": str(e)}
+            return self.result
 
     def start(self):
         """启动设备（启动当前任务）"""
