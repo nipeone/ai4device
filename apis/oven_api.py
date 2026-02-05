@@ -6,7 +6,7 @@ from logger import sys_logger as logger
 from devices.oven_core import oven_controller, OvenActionCode, OvenLidActionCode
 from schemas.oven import (
     OvenStatusResponse,
-    OvenStatus,
+    OvenSystemStatus,
     OvenCurveResponse,
     OvenCurveRequest,
     CurvePoint,
@@ -73,7 +73,7 @@ def get_oven_status() -> OvenStatusResponse:
         data: list = result.get("data")
         oven_status_list = []
         for item in data:
-            oven_status_list.append(OvenStatus(
+            oven_status_list.append(OvenSystemStatus(
                     device_name=item["设备名称"],
                     device_address=item["设备地址"],
                     device_type=item["仪表型号"],

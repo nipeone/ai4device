@@ -8,9 +8,10 @@ import struct
 from logger import sys_logger as logger
 from .base import SocketControlledDevice
 from schemas.oven import CurvePoint
+from utils import retry_on_failure
 import config
 
-from schemas.oven import OvenStatus, OvenActionCode, OvenLidActionCode
+from schemas.oven import OvenSystemStatus, OvenActionCode, OvenLidActionCode, OvenLidStatus, OvenStatus
 
 class OvenController(SocketControlledDevice):
     """Socket（ZMQ）控制的高温炉设备"""
@@ -50,12 +51,16 @@ class OvenController(SocketControlledDevice):
     def connect(self):
         """连接ZMQ设备"""
         # 调用父类方法创建主context和socket（用于REQ操作）
+
+        if self.is_connected:
+            return True
+
         if not super().connect():
             return False
         
         try:
             # 连接主socket到REQ地址
-            self.socket.connect(self.REQ_ADDR)
+            # self.socket.connect(self.REQ_ADDR)
             logger.debug(f"成功连接高温炉：{self.REQ_ADDR}")
             
             # 测试连接：获取设备列表
@@ -204,6 +209,7 @@ class OvenController(SocketControlledDevice):
         self.realtime_data = latest_data
         return latest_data
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def set_curve_points(self, oven_id: int, curve_points: list[CurvePoint]):
         """
         设置炉子温度运行曲线
@@ -255,6 +261,7 @@ class OvenController(SocketControlledDevice):
             self.result = {"status": "error", "message": self.message}
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def control_lid(self, oven_id: int, action_code: OvenLidActionCode):
         """
         控制炉盖
@@ -308,6 +315,7 @@ class OvenController(SocketControlledDevice):
                 self._ctrl_context = None
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def control_oven(self, oven_id: int, action_code: OvenActionCode):
         """控制炉子
         
@@ -355,24 +363,38 @@ class OvenController(SocketControlledDevice):
         
         :param oven_id: 炉子ID
         """
-        return self.control_oven(oven_id, OvenActionCode.start)
+        return self.control_oven(oven_id, OvenActionCode.START)
 
     def stop(self, oven_id: int):
         """停止设备
         :param oven_id: 炉子ID
         """
-        return self.control_oven(oven_id, OvenActionCode.stop)
+        return self.control_oven(oven_id, OvenActionCode.STOP)
 
     def pause(self, oven_id: int):
         """暂停设备
         :param oven_id: 炉子ID
         """
-        return self.control_oven(oven_id, OvenActionCode.pause)
+        return self.control_oven(oven_id, OvenActionCode.PAUSE)
 
     def get_status(self) -> dict:
         """获取设备状态"""
         # 获取实时数据（短时间采样）
         return self.status
+
+    def get_oven_status(self, oven_id: int) -> OvenStatus:
+        """获取炉子工作状态
+        - 0=运行
+        - 1=停止
+        - 2=暂停
+        :param oven_id: 炉子ID
+        :return: 炉子状态
+        """
+        realtime_map = self.get_realtime_data(duration=10.0)
+        if oven_id not in realtime_map:
+            return OvenStatus.STOPPED
+        else:
+            return OvenStatus(realtime_map[oven_id].get('status', OvenStatus.STOPPED))
 
     def get_running_status(self) -> dict:
         """获取设备运行状态"""

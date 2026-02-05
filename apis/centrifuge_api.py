@@ -20,7 +20,7 @@ from schemas.centrifuge import (
     CentrifugeTimeRequest,
     CentrifugeActionRequest,
     CentrifugeActionResponse,
-    CentrifugeStatus
+    CentrifugeRunningStatus
 )
 
 router = APIRouter(prefix="/api/centrifuge", tags=["离心机"])
@@ -39,7 +39,7 @@ def get_centrifuge_status() -> CentrifugeStatusResponse:
         if not data:
             return CentrifugeStatusResponse(code=500, message="数据不完整")
         else:
-            parsed_data = CentrifugeStatus(
+            parsed_data = CentrifugeRunningStatus(
                 actual_rpm = data.get('actual_rpm'),
                 remain_time = cent_format_time(data.get('remain_time')),
                 run_state = CENT_RUN_MAP.get(data.get('run_state', 0)),
@@ -51,14 +51,14 @@ def get_centrifuge_status() -> CentrifugeStatusResponse:
                 setted_rpm = data.get('setted_rpm'),
                 setted_time = data.get('setted_time'),
                 centrifuge_force = data.get('centrifuge_force')
-            )
+            ).model_dump()
         return CentrifugeStatusResponse(code=200, message="离心机运行状态获取成功", data=parsed_data)
 
 
 @router.post("/control", response_model=CentrifugeActionResponse, tags=["离心机"])
 def control_centrifuge(request: CentrifugeActionRequest) -> CentrifugeActionResponse:
     action = request.action
-    logger.log(f"离心机手动操作: {action}", "INFO")
+    logger.log(f"离心机手动操作: {action.name}", "INFO")
     result = centrifuge_controller.control_centrifuge(action)
     if result.get("status") == "success":
         return CentrifugeActionResponse(code=200, message=result.get("message", "离心机操作成功"), data=action)

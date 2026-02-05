@@ -401,9 +401,9 @@ class SocketControlledDevice(BaseDevice):
         Socket设备通用连接逻辑
         子类应该先调用super().connect()创建context和socket，然后进行连接测试
         """
-        # 如果已经连接，先断开
+        # 如果已经连接，直接返回，避免重复连接
         if self.is_connected:
-            self.disconnect()
+            return True
         
         try:
             # 使用_create_socket方法创建context和socket

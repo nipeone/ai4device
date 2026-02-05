@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional
 from logger import sys_logger as logger
 from .base import BaseDevice, DeviceStatus
 import config
+from utils import retry_on_failure
 
 
 class XRDController(BaseDevice):
@@ -32,6 +33,7 @@ class XRDController(BaseDevice):
         self.socket_timeout = timeout  # Socket超时时间（秒）
         self.xrd_status_cache = {}
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value=True)
     def _send_command(self, command: str, content: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         发送命令到XRD设备并接收响应
@@ -116,9 +118,9 @@ class XRDController(BaseDevice):
 
     def connect(self):
         """连接XRD衍射仪设备"""
-        # 如果已经连接，先断开
+        # 如果已经连接，直接返回，避免重复连接
         if self.is_connected:
-            self.disconnect()
+            return True
         
         try:
             # 创建TCP Socket
@@ -182,7 +184,7 @@ class XRDController(BaseDevice):
         self.message = "XRD衍射仪设备已断开连接"
 
     # ===================== API命令实现 =====================
-    
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def start_auto_mode(self, status: bool) -> Dict[str, Any]:
         """
         启动或停止自动模式

@@ -1,8 +1,10 @@
 import time
+from enum import Enum
+
 from .base import PLCControlledDevice
 import config
 
-from schemas.robot import PlcStatus, TaskData, RobotStatus
+from schemas.robot import PlcStatus, TaskData, RobotSystemStatus, RobotWorkingStatus, RobotHomeStatus, RobotTaskStatus, RobotActionCode, RobotStatus
 
 class RobotController(PLCControlledDevice):
     """PLC控制的机器人手臂设备"""
@@ -50,36 +52,36 @@ class RobotController(PLCControlledDevice):
             )
         }
 
-    def get_home_status(self) -> bool:
+    def get_home_status(self) -> RobotHomeStatus:
         """获取原点状态: DB1.218.0 (原点状态) 
-        - 1=原点
         - 0=非原点
+        - 1=在原点
         """
-        return self.read_db_bit(1, 218, 0)
+        return RobotHomeStatus(self.read_db_bit(1, 218, 0))
 
-    def get_task_status(self) -> int:
+    def get_task_status(self) -> RobotTaskStatus:
         """获取任务状态: DB2.40 (任务状态) 
-        - 0=无任务
-        - 1=有任务
+        - NO_TASK: 无任务
+        - HAS_TASK: 有任务
         """
-        return self.read_db_int(2, 40, 4)
+        return RobotTaskStatus(self.read_db_int(2, 40, 4))
 
-    def get_system_status(self) -> int:
+    def get_system_status(self) -> RobotSystemStatus:
         """获取系统状态: DB1.242 (系统状态) 
-        - 0=断线
-        - 1=空闲
-        - 2=执行中
-        - 3=完成
-        - 4=失败
+        - DISCONNECTED: 断线(0)
+        - IDLE: 空闲
+        - RUNNING: 运行中
+        - COMPLETED: 完成
+        - FAILED: 失败
         """
-        return self.read_db_int(1, 242, 4)
+        return RobotSystemStatus(self.read_db_int(1, 242, 4))
 
-    def get_robot_status(self) -> bool:
+    def get_robot_working_status(self) -> RobotWorkingStatus:
         """获取机器人状态: DB2.18.4 (机器人启动/暂停) 
-        - 1=启动
-        - 0=暂停
+        - STARTED: 启动
+        - PAUSED: 暂停
         """
-        return self.read_db_bit(2, 18, 4)
+        return RobotWorkingStatus(self.read_db_bit(2, 18, 4))
 
     def reset_robot(self) -> bool:
         """机器人复位
@@ -123,17 +125,17 @@ class RobotController(PLCControlledDevice):
             return False
         return self.pulse_m(10, 0)
 
-    def write_task(self, tid: int, st: int, qty: int) -> bool:
+    def write_task(self, tid: int, sta: int, qty: int) -> bool:
         """写入任务数据到DB3
         - tid: 任务ID DB3.0
-        - st: 站点 DB3.2
-        - qty: 生产数量 DB3.4
+        - sta: 站点(货架号) DB3.2
+        - qty: 数量 DB3.4
         """
         if not self.connect():
             return False
         # 设置数据 (tid任务id/st站点/qty生产数量)
         self.write_db_int(3, 0, tid, size=2)
-        self.write_db_int(3, 2, st, size=2)
+        self.write_db_int(3, 2, sta, size=2)
         self.write_db_int(3, 4, qty, size=2)
         return True
 

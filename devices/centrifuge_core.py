@@ -7,8 +7,10 @@ from .base import ModbusControlledDevice, DeviceStatus
 import config
 from utils import (
     cent_format_time, 
-    cent_get_value
+    cent_get_value,
+    retry_on_failure
 )
+from schemas.centrifuge import CentrifugeActionCode, CentrifugeDoorStatus, CentrifugeStatus
 
 # 全局变量定义
 CENT_CMDS = {
@@ -166,6 +168,7 @@ class CentrifugeController(ModbusControlledDevice):
         self.message = "离心机已断开连接"
         self.status = DeviceStatus.disconnected
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def start(self):
         """启动离心机"""
         if not self.is_connected:
@@ -186,6 +189,7 @@ class CentrifugeController(ModbusControlledDevice):
             self.status = DeviceStatus.error
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def stop(self):
         """停止离心机"""
         if not self.is_connected:
@@ -206,6 +210,7 @@ class CentrifugeController(ModbusControlledDevice):
             self.status = DeviceStatus.error
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def open_door(self):
         """打开离心机门"""
         if not self.is_connected:
@@ -223,6 +228,7 @@ class CentrifugeController(ModbusControlledDevice):
             self.status = DeviceStatus.error
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def close_door(self):
         """关闭离心机门"""
         if not self.is_connected:
@@ -240,14 +246,15 @@ class CentrifugeController(ModbusControlledDevice):
             self.status = DeviceStatus.error
             return self.result
 
-    def control_centrifuge(self, action: Literal["start", "stop", "open", "close"]) -> dict:
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
+    def control_centrifuge(self, action: CentrifugeActionCode) -> dict:
         """控制离心机"""
         if not self.is_connected:
             self.result = {"status": "error", "message": "设备未连接"}
             self.status = DeviceStatus.disconnected
             return self.result
         
-        result = self.send_raw(CENT_CMDS[action])
+        result = self.send_raw(CENT_CMDS[action.name.lower()])
         if result.get("status") == "success":
             self.message = f"离心机{action}操作成功"
             self.result = {"status": "success", "message": f"操作成功"}
@@ -258,6 +265,7 @@ class CentrifugeController(ModbusControlledDevice):
             self.status = DeviceStatus.error
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def set_speed(self, rpm: int):
         """设置转速"""
         if not self.is_connected:
@@ -276,8 +284,9 @@ class CentrifugeController(ModbusControlledDevice):
             self.status = DeviceStatus.error
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def set_time(self, time: int):
-        """设置时间"""
+        """设置时间，单位：分钟"""
         if not self.is_connected:
             self.result = {"status": "error", "message": "设备未连接"}
             self.status = DeviceStatus.disconnected
@@ -322,9 +331,9 @@ class CentrifugeController(ModbusControlledDevice):
         run_time = cent_get_value(data_bytes, 3)
         # 故障码
         fault_code = cent_get_value(data_bytes, 4)
-        # 运行状态
+        # 运行状态 0 unkown 1 stopped, 2 running
         run_state = cent_get_value(data_bytes, 5)
-        # 门窗状态 1 open, 2 close
+        # 门窗状态 0 unknown, 1 opened, 2 closed
         door_window = cent_get_value(data_bytes, 6)
         # 设置转速
         setted_rpm = cent_get_value(data_bytes, 8)
@@ -362,16 +371,32 @@ class CentrifugeController(ModbusControlledDevice):
 
         door_window
             - 0 开关过程中的中间状态
-            - 1 开
-            - 2 闭
+            - 1 打开
+            - 2 关闭
 
         :return: True open, False close
         '''
         status = self.get_running_status()
         if status.get("status") == "success":
-            return status.get("data")["door_window"] == 2
+            return status.get("data")["door_window"] == CentrifugeDoorStatus.CLOSED.value
         else:
             return False
+
+    def get_door_status(self) -> CentrifugeDoorStatus:
+        """获取离心机门窗状态"""
+        status = self.get_running_status()
+        if status.get("status") == "success":
+            return CentrifugeDoorStatus(status.get("data")["door_window"])
+        else:
+            return CentrifugeDoorStatus.UNKNOWN
+
+    def get_centrifuge_status(self) -> CentrifugeStatus:
+        """获取离心机运行状态"""
+        status = self.get_running_status()
+        if status.get("status") == "success":
+            return CentrifugeStatus(status.get("data")["run_state"])
+        else:
+            return CentrifugeStatus.UNKNOWN
 
     def get_running_status(self) -> dict:
         """获取设备运行状态信息"""

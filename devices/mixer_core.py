@@ -3,7 +3,7 @@ import time
 from typing import Dict, Any, List, Optional
 from .base import RestAPIControlledDevice, DeviceStatus
 import config
-
+from utils import retry_on_failure
 from schemas.mixer import (
     GetTaskInfoRequest,
     GetTaskInfoResponse,
@@ -119,6 +119,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": self.message}
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def add_task(self, add_task_request: AddTaskRequest) -> Dict[str, Any]:
         """
         创建任务（AddTask）
@@ -215,6 +216,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": str(e)}
             return {"status": "error", "message": str(e)}
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def batch_start_task(self, task_id_list: List[int]) -> Dict[str, Any]:
         """
         批量启动任务（BatchStartTask）
@@ -240,6 +242,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": str(e)}
             return {"status": "error", "message": str(e)}
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def stop_task(self, task_id: int) -> Dict[str, Any]:
         """
         暂停任务（StopTask）
@@ -274,6 +277,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": str(e)}
             return {"status": "error", "message": str(e)}
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def cancel_task(self, task_id: int) -> Dict[str, Any]:
         """
         取消任务（CancelTask）
@@ -342,6 +346,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": str(e)}
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def start(self):
         """启动设备（启动当前任务）"""
         if self.current_task_id:
@@ -351,6 +356,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": "没有当前任务"}
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def stop(self):
         """停止设备（暂停当前任务）"""
         if self.current_task_id:

@@ -4,6 +4,7 @@ from .base import DeviceStatus, SocketControlledDevice
 import config
 from typing import Literal
 
+from utils import retry_on_failure
 from schemas.door import DoorActionCode
 from logger import sys_logger as logger
 
@@ -24,12 +25,15 @@ class DoorController(SocketControlledDevice):
     def connect(self):
         """连接ZMQ设备"""
         # 调用父类方法创建context和socket
+        if self.is_connected:
+            return True
+
         if not super().connect():
             return False
         
         try:
             # 连接socket到目标地址
-            self.socket.connect(self.target_address)
+            # self.socket.connect(self.target_address)
             self.is_connected = True
             self.status = DeviceStatus.connected
             self.message = "防护门设备连接成功"
@@ -121,7 +125,7 @@ class DoorController(SocketControlledDevice):
             return self.result
 
         # === 互斥逻辑检查 ===
-        if action == DoorActionCode.open:
+        if action == DoorActionCode.OPEN:
             # 寻找同组的搭档
             if door_index % 2 != 0:
                 partner_index = door_index + 1
@@ -136,7 +140,7 @@ class DoorController(SocketControlledDevice):
                 print(f"[系统自动] 检测到互斥：门{partner_index}当前开启，正在尝试自动关闭...")
 
                 # 递归调用自己，把搭档关掉
-                close_result = self.send_command(partner_index, DoorActionCode.close)
+                close_result = self.send_command(partner_index, DoorActionCode.CLOSE)
 
                 # 如果关门失败，为了安全，终止当前开门操作
                 if close_result.get("status") != "success":
@@ -181,6 +185,21 @@ class DoorController(SocketControlledDevice):
             self.message = f"门{door_index} {action}操作异常: {str(e)}"
             self.result = {"status": "error", "message": self.message}
             return self.result
+
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
+    def open_door(self, door_index: int) -> dict:
+        """打开门"""
+        return self.send_command(door_index, DoorActionCode.OPEN)
+
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
+    def close_door(self, door_index: int):
+        """关闭门"""
+        return self.send_command(door_index, DoorActionCode.CLOSE)
+
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
+    def control_door(self, door_index: int, action: DoorActionCode):
+        """控制门"""
+        return self.send_command(door_index, action)
 
     def start(self):
         """启动设备（门设备无需启动操作）"""

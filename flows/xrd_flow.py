@@ -267,14 +267,18 @@ class XRDFlowManager:
         
         self.running = True
 
-        ########## 步骤0: 准备设备 ##########
+        ################################################################
+        # 步骤0: 准备设备 #
+        ################################################################
         self._log_step("步骤0: 准备设备...", "INFO")
         if not self._prepare_device(check_interval):
             self.running = False
             return {"status": False, "message": "设备准备失败"}
 
 
+        ################################################################
         # 步骤1: 检查是否允许上样
+        ################################################################
         self._log_step("步骤1: 检查是否允许上样...", "INFO")
         response = self.xrd_controller.get_sample_request()
         if not response.get("status"):
@@ -284,12 +288,16 @@ class XRDFlowManager:
 
         self._log_step(f"是否允许上样结果：{response}")
         
-        ########## 步骤2: 等待人工上样（提示用户将样品放到上样台） ##########
+        ################################################################
+        # 步骤2: 等待人工上样（提示用户将样品放到上样台） #
+        ################################################################
         self._log_step("步骤2: 等待人工上样...", "INFO")
         if not self._wait_for_confirm("请将样品放到上样台，然后点击确认", timeout=300):
             return {"status": False, "message": "上样确认超时或取消"}
         
+        ################################################################
         # 步骤3: 发送样品信息和采集参数
+        ################################################################
         self._log_step("步骤3: 发送样品信息和采集参数...", "INFO")
         response = self.xrd_controller.send_sample_ready(
                                                         sample_id=sample_id,
@@ -305,7 +313,9 @@ class XRDFlowManager:
         else:
             self._log_step(f"发送采集参数成功: 起始角度={start_theta}°, 结束角度={end_theta}°, 步长={increment}°, 曝光时间={exp_time}s", "SUCCESS")
         
-        ########## 步骤4: 等待测试完成（可选） ##########
+        ################################################################
+        # 步骤4: 等待测试完成（可选） #
+        ################################################################
         if wait_for_completion:
             self._log_step("步骤4: 等待测试完成...", "INFO")
             if not self._wait_for_test_completion(check_interval):
@@ -314,7 +324,9 @@ class XRDFlowManager:
             else:
                 self._log_step("测试完成", "SUCCESS")
         
-        ########## 步骤5: 发送下样完成信号（单样品模式，工位通常是1） ##########
+        ################################################################
+        # 步骤5: 发送下样完成信号（单样品模式，工位通常是1） #
+        ################################################################
         down_response = self.xrd_controller.get_sample_down(1)
         if not down_response.get("status"):
             self._log_step(f"下样失败: {down_response.get('message')}", "WARN")
@@ -331,7 +343,10 @@ class XRDFlowManager:
             self._log_step(f"发送下样完成信号成功: {down_response}")
         
         time.sleep(3)
-        # 步骤6: 恢复待机模式
+        
+        ################################################################
+        # 步骤6: 恢复待机模式 #
+        ################################################################
         self._shutdown_device()
 
         self.running = False
@@ -523,10 +538,15 @@ class XRDFlowManager:
         ):
 
         if start_theta <= 5.0:
-            raise Exception(f"起始角度不能≤5.0")
+            raise Exception(f"起始角度需要>5.0")
+
+        if end_theta > 120.0:
+            raise Exception(f"结束角度需要<120.0")
 
         if end_theta < start_theta:
             raise Exception(f"结束角度应该大于起始角度")
+
+        
 
         if end_theta - start_theta < 10:
             raise Exception(f"起始角度和结束角度之差应该≥10")
@@ -538,7 +558,7 @@ class XRDFlowManager:
             return self.run_single_sample_test(sample_id, start_theta, end_theta, increment, exp_time)
         else:
             # TODO 多样品模式
-            raise Exception("尚未实现")
+            raise Exception("尚未实现多样品模式")
             # self.run_multi_sample_test()
 
 xrd_flow_mgr = XRDFlowManager(xrd_controller)

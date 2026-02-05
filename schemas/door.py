@@ -5,8 +5,20 @@ from enum import Enum
 from .base import BaseResponse
 
 class DoorActionCode(Enum):
-    open = 1
-    close = 2
+    '''门动作
+    - OPEN: 打开
+    - CLOSE: 关闭
+    '''
+    OPEN = 1
+    CLOSE = 2
+
+class DoorStatus(Enum):
+    '''门状态
+    - OPENED: 打开
+    - CLOSED: 关闭
+    '''
+    OPENED = 1
+    CLOSED = 2
 
 class DoorActionRequest(BaseModel):
     door_id: int = Field(..., description="门ID")

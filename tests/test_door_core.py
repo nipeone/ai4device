@@ -52,6 +52,6 @@ class TestGetDoorStatus:
 
     def test_control_door(self, controller: DoorController):
         controller.connect()
-        result = controller.send_command(1, DoorActionCode.close)
+        result = controller.control_door(1, DoorActionCode.CLOSE)
         print(result)
         assert result.get("status") == "success"

@@ -45,7 +45,7 @@ def control_door(request: DoorActionRequest) -> DoorActionResponse:
         - data: str
     '''
     logger.log(f"玻璃门手动操作: ID={request.door_id}, Action={request.action}", "INFO")
-    result = door_controller.send_command(request.door_id, DoorActionCode(request.action))
+    result = door_controller.control_door(request.door_id, request.action)
     if result.get("status") != "success": 
         return DoorActionResponse(code=500, message=result.get("message", "未知错误"))
     else:

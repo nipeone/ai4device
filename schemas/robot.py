@@ -8,6 +8,44 @@ class RobotActionCode(Enum):
     reset = "reset"
     toggle = "toggle"
 
+class RobotSystemStatus(Enum):
+    '''机器人系统状态
+    - DISCONNECTED: 断线(0)
+    - IDLE: 空闲(1)
+    - RUNNING: 运行中(2)
+    - COMPLETED: 完成(3)
+    - FAILED: 失败(4)
+    '''
+    DISCONNECTED = 0
+    IDLE = 1
+    RUNNING = 2
+    COMPLETED = 3
+    FAILED = 4
+
+class RobotWorkingStatus(Enum):
+    '''机器人状态
+    - PAUSED: 暂停(0)
+    - STARTED: 启动(1)
+    '''
+    PAUSED = 0
+    STARTED = 1
+
+class RobotHomeStatus(Enum):
+    '''机器人原点状态
+    - NOT_HOME: 非原点(0)
+    - IN_HOME: 在原点(1)
+    '''
+    NOT_HOME = 0
+    IN_HOME = 1
+
+class RobotTaskStatus(Enum):
+    '''机器人任务状态
+    - NO_TASK: 无任务(0)
+    - HAS_TASK: 有任务(1)
+    '''
+    NO_TASK = 0
+    HAS_TASK = 1
+
 class RobotStatus(BaseModel):
     """机器人状态
     
