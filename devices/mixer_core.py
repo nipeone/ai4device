@@ -7,6 +7,8 @@ from utils import retry_on_failure
 from schemas.mixer import (
     GetTaskInfoRequest,
     GetTaskInfoResponse,
+    GetResourceInfoRequest,
+    GetResourceInfoResponse,
     AddTaskRequest,
     AddTaskResponse,
     BatchStartTaskRequest,
@@ -112,6 +114,33 @@ class MixerController(RestAPIControlledDevice):
             self.current_task_status = data.status
             
             self.message = f"获取任务信息成功: task_id={task_id}"
+            self.result = {"status": "success", "data": data}
+            return self.result
+        except requests.exceptions.RequestException as e:
+            self.message = f"获取任务信息失败: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
+
+    def get_resource_info(self) -> Dict[str, Any]:
+        """
+        获取资源信息（GetResourceInfo）
+        :return: 资源信息
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+
+        try:
+            payload = GetResourceInfoRequest(roll=0)
+
+            response = requests.post(
+                f"{self.api_base_url}/api/GetResourceInfo",
+                json=payload.model_dump(),
+                timeout=10,
+                headers=self.api_headers
+            )
+            response.raise_for_status()
+            data = GetResourceInfoResponse(**response.json())
+            
             self.result = {"status": "success", "data": data}
             return self.result
         except requests.exceptions.RequestException as e:
@@ -379,8 +408,8 @@ class MixerController(RestAPIControlledDevice):
 
     def get_result(self) -> dict:
         """获取设备结果"""
-        if self.current_task_id: 
-            self.get_task_info(self.current_task_id)
+        if self.current_task_id:
+            self.result = self.get_task_info(self.current_task_id)
         return self.result if self.result else {
             "status": "idle",
             "message": "无操作结果"

@@ -1,5 +1,17 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
+from enum import Enum
+
+class TaskStatus(Enum):
+    UNSTARTED = 0  # 未开始
+    RUNNING = 1 # 运行中
+    COMPLETED = 2 # 已完成
+    PAUSED = 3  # 暂停
+    STOPPED = 5  # 已终止
+    PAUSING = 6  # 暂停中
+    STOPPING = 7  # 终止中
+    WAITING = 9  # 等待中
+    HOLDING = 10  # 阻塞
 
 class GetTokenRequest(BaseModel):
     username: str
@@ -22,7 +34,7 @@ class ProcessJson(BaseModel):
     chemical_id: int = 44 # 化学品ID
     SSSI: str = "2-00-25-9" # 化学物质登记号（如"2-00-25-9"）
     add_weight: float = 0.0  # 添加重量
-    offset: float = 0.0 # 偏移量
+    offset: float = 0.3 # 偏移量
     custom: CustomConfig = CustomConfig(unit="mg", unitOptions=["mg", "g"]) # 嵌套的自定义单位配置
 
 # 布局列表项模型
@@ -51,14 +63,14 @@ class TaskSetup(BaseModel):
 # 主任务模型（继承BaseModel）
 class AddTaskRequest(BaseModel):
     """配料设备任务主模型"""
-    task_setup: TaskSetup = TaskSetup() # 嵌套的任务设置
-    task_id: int = 0    # 任务ID
-    task_name: str  # 任务名称
-    type: int = 2       # 任务类型
-    is_audit_log: int = 1 # 是否记录审计日志（1=是，0=否）
-    layout_list: Optional[List[LayoutListItem]] = None  # 布局列表（多个布局项）
-    added_slots: str = ""
-    task_template_id_list: List[Any] = []  # 模板ID列表（空数组）
+    task_setup: TaskSetup = Field(default_factory=TaskSetup) # 嵌套的任务设置
+    task_id: int = Field(default=0, description="任务ID, 如果是新增任务，task_id填0")
+    task_name: str = Field(..., description="任务名称")
+    type: int = Field(default=2, description="任务类型, 2:配料任务")
+    is_audit_log: int = Field(default=1, description="是否记录审计日志, 1:是, 0:否")
+    layout_list: List[LayoutListItem] = Field(..., description="任务单元列表")
+    added_slots: str = Field(default="", description="新增槽位, 如果为空表示不新增槽位")
+    task_template_id_list: List[Any] = Field(default=[], description="模板ID列表, 如果有填表示是通过模板配置的实验")
 
 class AddTaskResponse(BaseModel):
     code: int
@@ -71,6 +83,43 @@ class AddTaskResponse(BaseModel):
 class GetTaskInfoRequest(BaseModel):
     task_id: int
 
+class GetResourceInfoRequest(BaseModel):
+    roll: int
+
+class ResourceListItem(BaseModel):
+    fid: int = Field(default=0, description="资源ID")
+    layout_code: str = Field(default="IPF1-1:-1", description="资源位置编码")
+    working_code: str = Field(default="", description="操作时资源位置编码")
+    resource_type: str = Field(..., description="资源类型")
+    substance: str = Field(default="", description="物质名称")
+    chemical_id: Optional[int] = Field(default=None, description="化学品ID")
+    material_batch_number: Optional[Any] = Field(default=None, description="物料批次号")
+    initial_volume: float = Field(default=0.0, description="初始体积")
+    initial_weight: float = Field(default=0.0, description="初始重量")
+    cur_volume: float = Field(default=0.0, description="当前体积")
+    cur_weight: float = Field(default=0.0, description="当前重量")
+    available_volume: float = Field(default=0.0, description="可用体积")
+    available_weight: float = Field(default=0.0, description="可用重量")
+    tray_QR_code: str = Field(default="", description="托盘二维码")
+    QR_code: str = Field(default="", description="试管二维码")
+    unit: str = Field(default="", description="单位")
+    source_layout_code: str = Field(default="IPF1-1:-1", description="原始资源位置编码")
+    with_magneton: bool = Field(default=False, description="是否带有磁性")
+    usage_times: int = Field(default=0, description="使用次数")
+    status: int = Field(default=0, description="状态，0:资源在位置上，1:资源待移走，2:资源待放入，3:任务占用中，4:待出料")
+    color: Optional[Any] = Field(default=None, description="颜色")
+    created_at: int = Field(default=0, description="创建时间")
+    updated_at: int = Field(default=0, description="更新时间")
+    with_cap: bool = Field(default=False, description="是否带有盖子")
+    used: bool = Field(default=False, description="是否被使用")
+
+class GetResourceInfoResponse(BaseModel):
+    code: int
+    msg: str
+    result: Optional[Any]
+    data: Optional[Any]
+    resource_list: Optional[List[ResourceListItem]]
+
 class GetTaskInfoResponse(BaseModel):
     task_id: int
     task_name: str
@@ -81,7 +130,7 @@ class GetTaskInfoResponse(BaseModel):
     task_end_time: Optional[Any]
     created_at: int
     updated_at: int
-    is_audit_log: int
+    is_audit_log: int = 1
     task_template_id_list: List[Any] = []  # 模板ID列表（空数组）
     task_setup: TaskSetup
     unit_list: List[LayoutListItem]
