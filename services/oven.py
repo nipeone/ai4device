@@ -30,8 +30,10 @@ class OvenService:
                 cursor = conn.cursor()
                 cursor.execute("SELECT points_json FROM saved_curves WHERE oven_id = ?", (oven_id,))
                 row = cursor.fetchone()
+                if not row:
+                    return []
                 points_list = json.loads(row[0])
-                return [CurvePoint(**p) for p in json.loads(points_list)]
+                return [CurvePoint(**p) for p in points_list]
         except Exception as e:
             logger.error(f"炉子{oven_id}运行曲线获取失败: {str(e)}")
             return []
@@ -42,8 +44,10 @@ class OvenService:
                 cursor = conn.cursor()
                 cursor.execute("SELECT points_json FROM saved_curves WHERE curve_name = ?", (curve_name,))
                 row = cursor.fetchone()
+                if not row:
+                    return []
                 points_list = json.loads(row[0])
-                return [CurvePoint(**p) for p in json.loads(points_list)]
+                return [CurvePoint(**p) for p in points_list]
         except Exception as e:
             logger.error(f"炉子{curve_name}运行曲线获取失败: {str(e)}")
             return []
