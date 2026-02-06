@@ -21,9 +21,8 @@ async def start_experiment(file: UploadFile = File(...)):
     开始试验的总入口
     1. 配料，上传Excel文件，解析配料数据
     2. 熔封
-    3. 上料
-    4. 下料
-    5. xrd衍射仪
+    3. 热处理，包括加热炉、离心机工序
+    5. xrd测试
     """
     try:
         # 检查文件类型
