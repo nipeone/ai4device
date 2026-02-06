@@ -1100,6 +1100,11 @@ class ThermalFlowManager:
 
         return {"status": True, "message": f"{TASKS[TaskType.SHELF_DROP]}任务完成"}
 
+    def _return_with_error(self, message: str) -> dict:
+        """返回错误结果"""
+        self.running = False
+        return {"status": False, "message": message}
+
     def load(self, shelf_id: int, oven_id: int, qty: int) -> Dict[str, Any]:
         """上料流程（货架1 -> 炉子）"""
         
@@ -1208,7 +1213,7 @@ class ThermalFlowManager:
             result = self.load(ShelfType.SHELF_1.value, oven_id, qty)
             if not result.get("status"):
                 self._log_step(f"严重错误: 上料任务失败: {result.get('message')}", "ERROR")
-                return {"status": False, "message": f"上料任务失败: {result.get('message')}"}
+                return self._return_with_error(f"上料任务失败: {result.get('message')}")
 
             #########################################################
             # 2. 燃烧 #
@@ -1216,7 +1221,7 @@ class ThermalFlowManager:
             result = self._task_oven_burn(oven_id, curve_points)
             if not result.get("status"):
                 self._log_step(f"严重错误: 燃烧任务失败: {result.get('message')}", "ERROR")
-                return {"status": False, "message": f"燃烧任务失败: {result.get('message')}"}
+                return self._return_with_error(f"燃烧任务失败: {result.get('message')}")
 
             self._log_step(f"燃烧任务完成: {result.get('message')}", "SUCCESS")
 
@@ -1226,14 +1231,14 @@ class ThermalFlowManager:
             result = self.unload(ShelfType.SHELF_2.value, oven_id, qty)
             if not result.get("status"):
                 self._log_step(f"严重错误: 下料任务失败: {result.get('message')}", "ERROR")
-                return {"status": False, "message": f"下料任务失败: {result.get('message')}"}
+                return self._return_with_error(f"下料任务失败: {result.get('message')}")
 
             self._log_step(f"下料任务完成: {result.get('message')}", "SUCCESS")
 
             return {"status": True, "message": "热处理流程完成"}
         except Exception as e:
             self._log_step(f"严重错误: 热处理流程失败: {e}", "ERROR")
-            return {"status": False, "message": f"热处理流程失败: {e}"}
+            return self._return_with_error(f"热处理流程失败: {e}")
         finally:
             self.running = False
 

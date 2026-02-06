@@ -8,6 +8,7 @@ from apis.flow_api import router as flow_router
 from apis.experiment_api import router as experiment_router
 from apis.system_api import router as system_router
 from apis.mixer_api import router as mixer_router
+from apis.xrd_api import router as xrd_router
 from logger import sys_logger as logger
 import config
 from utils import initialize_oven_curve_db
@@ -55,6 +56,7 @@ app.include_router(flow_router)
 app.include_router(experiment_router)
 app.include_router(system_router)
 app.include_router(mixer_router)
+app.include_router(xrd_router)
 
 # 根路径
 @app.get("/")

@@ -1,0 +1,86 @@
+[
+  {
+    "layout_code": "",
+    "src_layout_code": "",
+    "resource_type": "CC10R10C",
+    "tray_QR_code": "",
+    "status": 0,
+    "QR_code": "",
+    "unit_type": "exp_add_powder",
+    "unit_column": 0,
+    "unit_row": 0,
+    "unit_id": "unit-19a34761f87",
+    "process_json": {
+      "resource_type": "CC10R10C",
+      "substance": "CuCl（氯化亚铜）",
+      "chemical_id": 24,
+      "SSSI": "0-7758-89-6",
+      "add_weight": 1,
+      "offset": 1,
+      "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+    }
+  },
+  {
+    "layout_code": "",
+    "src_layout_code": "",
+    "resource_type": "CC10R10C",
+    "tray_QR_code": "",
+    "status": 0,
+    "QR_code": "",
+    "unit_type": "exp_add_powder",
+    "unit_column": 1,
+    "unit_row": 0,
+    "unit_id": "unit-19a34761f88",
+    "process_json": {
+      "resource_type": "CC10R10C",
+      "substance": "CuI（碘化亚铜）",
+      "chemical_id": 25,
+      "SSSI": "0-7681-65-4",
+      "add_weight": 1,
+      "offset": 1,
+      "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+    }
+  },
+  {
+    "layout_code": "",
+    "src_layout_code": "",
+    "resource_type": "CC10R10C",
+    "tray_QR_code": "",
+    "status": 0,
+    "QR_code": "",
+    "unit_type": "exp_add_powder",
+    "unit_column": 0,
+    "unit_row": 1,
+    "unit_id": "unit-19a34761f89",
+    "process_json": {
+      "resource_type": "CC10R10C",
+      "substance": "CuCl（氯化亚铜）",
+      "chemical_id": 24,
+      "SSSI": "0-7758-89-6",
+      "add_weight": 1,
+      "offset": 1,
+      "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+    }
+  },
+  {
+    "layout_code": "",
+    "src_layout_code": "",
+    "resource_type": "CC10R10C",
+    "tray_QR_code": "",
+    "status": 0,
+    "QR_code": "",
+    "unit_type": "exp_add_powder",
+    "unit_column": 1,
+    "unit_row": 1,
+    "unit_id": "unit-19a34761f8a",
+    "process_json": {
+      "resource_type": "CC10R10C",
+      "substance": "CuI（碘化亚铜）",
+      "chemical_id": 25,
+      "SSSI": "0-7681-65-4",
+      "add_weight": 1,
+      "offset": 1,
+      "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+    }
+  }
+]

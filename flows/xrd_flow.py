@@ -207,7 +207,6 @@ class XRDFlowManager:
             self._log_step("等待升压超时", "ERROR")
             return False
         
-        
         # 5. 设置电压电流
         self._log_step(f"设置电压电流 (电压:{voltage}kV, 电流:{current}mA)...", "INFO")
         response = self.xrd_controller.set_voltage_current(voltage, current)
@@ -240,6 +239,11 @@ class XRDFlowManager:
         self.xrd_controller.start_auto_mode(False)
         return True
 
+    def _return_with_error(self, message: str) -> dict:
+        """返回错误结果"""
+        self.running = False
+        return {"status": False, "message": message}
+
     def run_single_sample_test(self,
                           sample_id: str,
                           start_theta: float = 5.0,
@@ -260,105 +264,94 @@ class XRDFlowManager:
         :param check_interval: 检查测试状态的间隔（秒），默认5.0
         :return: 测试结果字典
         """
-        self._log_step(f"开始单样品测试流程 - 样品ID: {sample_id}", "INFO")
-        
-        if not self._check_device_ready():
-            return {"status": False, "message": "设备未就绪"}
-        
-        self.running = True
+        self._log_step(f"开始单样品测试流程：样品ID={sample_id}", "INFO")
+        try:
+            self.running = True
+            ################################################################
+            # 步骤0: 准备设备 #
+            ################################################################
+            self._log_step("步骤0: 准备设备：设置自动模式、升高压、设置电压电流、等待电压电流稳定...", "INFO")
+            if not self._prepare_device(check_interval):
+                return self._return_with_error("设备准备失败")
 
-        ################################################################
-        # 步骤0: 准备设备 #
-        ################################################################
-        self._log_step("步骤0: 准备设备...", "INFO")
-        if not self._prepare_device(check_interval):
-            self.running = False
-            return {"status": False, "message": "设备准备失败"}
+            ################################################################
+            # 步骤1: 检查是否允许上样
+            ################################################################
+            self._log_step("步骤1: 检查是否允许上样...", "INFO")
+            response = self.xrd_controller.get_sample_request()
+            if not response.get("status"):
+                error_msg = response.get("message", "不允许上样")
+                self._log_step(f"上样请求被拒绝: {error_msg}", "ERROR")
+                return self._return_with_error(error_msg)
 
+            self._log_step(f"是否允许上样结果：{response}")
+            
+            ################################################################
+            # 步骤2: 等待人工上样（提示用户将样品放到上样台） #
+            ################################################################
+            self._log_step("步骤2: 等待人工上样...", "INFO")
+            if not self._wait_for_confirm("请将样品放到上样台，然后点击确认", timeout=300):
+                return self._return_with_error("上样确认超时或取消")
+            
+            ################################################################
+            # 步骤3: 发送样品信息和采集参数
+            ################################################################
+            self._log_step("步骤3: 发送样品信息和采集参数...", "INFO")
+            response = self.xrd_controller.send_sample_ready(
+                                                            sample_id=sample_id,
+                                                            start_theta=start_theta,
+                                                            end_theta=end_theta,
+                                                            increment=increment,
+                                                            exp_time=exp_time
+                                                        )
+            if not response.get("status"):
+                error_msg = response.get("message", "发送采集参数失败")
+                self._log_step(f"发送采集参数失败: {error_msg}", "ERROR")
+                return self._return_with_error(error_msg)
 
-        ################################################################
-        # 步骤1: 检查是否允许上样
-        ################################################################
-        self._log_step("步骤1: 检查是否允许上样...", "INFO")
-        response = self.xrd_controller.get_sample_request()
-        if not response.get("status"):
-            error_msg = response.get("message", "不允许上样")
-            self._log_step(f"上样请求被拒绝: {error_msg}", "ERROR")
-            return {"status": False, "message": error_msg}
-
-        self._log_step(f"是否允许上样结果：{response}")
-        
-        ################################################################
-        # 步骤2: 等待人工上样（提示用户将样品放到上样台） #
-        ################################################################
-        self._log_step("步骤2: 等待人工上样...", "INFO")
-        if not self._wait_for_confirm("请将样品放到上样台，然后点击确认", timeout=300):
-            return {"status": False, "message": "上样确认超时或取消"}
-        
-        ################################################################
-        # 步骤3: 发送样品信息和采集参数
-        ################################################################
-        self._log_step("步骤3: 发送样品信息和采集参数...", "INFO")
-        response = self.xrd_controller.send_sample_ready(
-                                                        sample_id=sample_id,
-                                                        start_theta=start_theta,
-                                                        end_theta=end_theta,
-                                                        increment=increment,
-                                                        exp_time=exp_time
-                                                    )
-        if not response.get("status"):
-            error_msg = response.get("message", "发送采集参数失败")
-            self._log_step(f"发送采集参数失败: {error_msg}", "ERROR")
-            return {"status": False, "message": error_msg}
-        else:
             self._log_step(f"发送采集参数成功: 起始角度={start_theta}°, 结束角度={end_theta}°, 步长={increment}°, 曝光时间={exp_time}s", "SUCCESS")
-        
-        ################################################################
-        # 步骤4: 等待测试完成（可选） #
-        ################################################################
-        if wait_for_completion:
-            self._log_step("步骤4: 等待测试完成...", "INFO")
-            if not self._wait_for_test_completion(check_interval):
-                self.running = False
-                return {"status": False, "message": "测试未完成或超时"}
-            else:
-                self._log_step("测试完成", "SUCCESS")
-        
-        ################################################################
-        # 步骤5: 发送下样完成信号（单样品模式，工位通常是1） #
-        ################################################################
-        down_response = self.xrd_controller.get_sample_down(1)
-        if not down_response.get("status"):
-            self._log_step(f"下样失败: {down_response.get('message')}", "WARN")
-        else:
-            self._log_step("下样成功", "SUCCESS")
-            self.latest_data = down_response
-            # self._log_step(f"下样结果：{down_response}")
-        
-        down_response = self.xrd_controller.send_sample_down_ready()
-        if not down_response.get("status"):
-            self._log_step(f"发送下样完成信号失败: {down_response.get('message')}", "ERROR")
-            return {"status": False, "message": "发送下样完成信号失败"}
-        else:
-            self._log_step(f"发送下样完成信号成功: {down_response}")
-        
-        time.sleep(3)
-        
-        ################################################################
-        # 步骤6: 恢复待机模式 #
-        ################################################################
-        self._shutdown_device()
+            
+            ################################################################
+            # 步骤4: 等待测试完成（可选） #
+            ################################################################
+            if wait_for_completion:
+                self._log_step("步骤4: 等待测试完成...", "INFO")
+                if not self._wait_for_test_completion(check_interval):
+                    return self._return_with_error("测试未完成或超时")
 
-        self.running = False
-        
-        result = {
-            "status": True,
-            "data": self.latest_data,
-            "message": "单样品测试流程完成"
-        }
-        
-        self._log_step(f"单样品测试流程完成 - 样品ID: {sample_id}", "SUCCESS")
-        return result
+            self._log_step("测试完成", "SUCCESS")
+            
+            ################################################################
+            # 步骤5: 发送下样完成信号（单样品模式，工位通常是1） #
+            ################################################################
+            down_response = self.xrd_controller.get_sample_down(1)
+            if not down_response.get("status"):
+                self._log_step(f"下样失败: {down_response.get('message')}", "WARN")
+            else:
+                self._log_step("下样成功", "SUCCESS")
+                self.latest_data = down_response
+                # self._log_step(f"下样结果：{down_response}")
+            
+            down_response = self.xrd_controller.send_sample_down_ready()
+            if not down_response.get("status"):
+                self._log_step(f"发送下样完成信号失败: {down_response.get('message')}", "ERROR")
+                return self._return_with_error("发送下样完成信号失败")
+            else:
+                self._log_step(f"发送下样完成信号成功: {down_response}")
+            
+            time.sleep(3)
+            
+            ################################################################
+            # 步骤6: 恢复待机模式 #
+            ################################################################
+            self._shutdown_device()
+            
+            self._log_step(f"单样品测试流程完成：样品ID={sample_id}", "SUCCESS")
+            return {"status": True, "message": f"单样品测试流程完成：样品ID={sample_id}", "data": self.latest_data}
+        except Exception as e:
+            return self._return_with_error(f"单样品测试流程失败: {e}")
+        finally:
+            self.running = False
     
     def run_multi_sample_test(self,
                           samples: List[Dict[str, Any]],
@@ -378,13 +371,13 @@ class XRDFlowManager:
         :param check_interval: 检查测试状态的间隔（秒），默认5.0
         :return: 测试结果字典
         """
-        self._log_step(f"开始多样品测试流程 - 样品数量: {len(samples)}", "INFO")
+        self._log_step(f"开始多样品测试流程：样品数量={len(samples)}", "INFO")
         
         if len(samples) > 30:
-            return {"status": False, "message": "样品数量超过30个，最多支持30个样品"}
+            return self._return_with_error("样品数量超过30个，最多支持30个样品")
         
         if not self._check_device_ready():
-            return {"status": False, "message": "设备未就绪"}
+            return self._return_with_error("设备未就绪")
         
         results = []
         station_counter = 1

@@ -1,5 +1,4 @@
 from typing import Literal
-from unittest import result
 from fastapi import APIRouter, Body, HTTPException
 import time
 from snap7.type import Area

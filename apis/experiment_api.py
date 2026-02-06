@@ -1,3 +1,4 @@
+import threading
 from fastapi import APIRouter, File, UploadFile
 from logger import sys_logger as logger
 
@@ -8,6 +9,11 @@ from flows.xrd_flow import xrd_flow_mgr
 from services.mixer import mixer_service
 
 router = APIRouter(prefix="/api/experiment", tags=["实验"])
+
+# 熔封人工确认事件（配料完成后等待前端调用确认接口再继续热处理）
+_seal_confirm_event = threading.Event()
+_seal_confirm_event.set()  # 初始为已确认，避免无熔封流程时卡住
+SEAL_CONFIRM_TIMEOUT = 300  # 等待熔封确认超时秒数
 
 @router.post("/flux", tags=["实验"])
 async def start_experiment(file: UploadFile = File(...)):
@@ -38,11 +44,14 @@ async def start_experiment(file: UploadFile = File(...)):
         #########################################################
         # 2. 熔封 #
         #########################################################
-
-        # TODO API为完成，人工确认熔封完成
+        _seal_confirm_event.clear()
+        logger.log("等待人工确认熔封完成，请调用 POST /api/experiment/flux/confirm_seal 确认", "WARN")
+        if not _seal_confirm_event.wait(timeout=SEAL_CONFIRM_TIMEOUT):
+            return {"status": "error", "message": "等待熔封确认超时"}
+        logger.log("熔封已确认，继续热处理流程", "INFO")
 
         #########################################################
-        # 3. 热处理 # 包括高温炉、离心机工序
+        # 3. 热处理 # 包括加热炉、离心机工序
         #########################################################
 
         thermal_flow_mgr.run()
@@ -64,3 +73,11 @@ async def start_experiment(file: UploadFile = File(...)):
             "status": "error",
             "message": f"Excel文件解析失败: {str(e)}"
         }
+
+
+@router.post("/flux/confirm_seal", tags=["实验"])
+def confirm_flux_seal():
+    """人工确认熔封完成。在实验总入口执行到熔封步骤后调用此接口，流程将继续执行热处理。"""
+    _seal_confirm_event.set()
+    logger.log("人工确认熔封完成", "INFO")
+    return {"msg": "熔封确认已接收，流程继续"}
