@@ -519,7 +519,39 @@ class XRDFlowManager:
             }
     
     def get_latest_data(self):
-        return self.latest_data
+        """
+        获取最新数据
+        :return: 数据字典
+        """
+        if "sample_info" in self.latest_data:
+            sample_info = self.latest_data["sample_info"]
+            return {
+                "status": True,
+                "message": "获取数据成功",
+                "data": {
+                    "sample_id": sample_info["id_number"],
+                    "theta2": sample_info["2theta"],
+                    "intensity": sample_info["intensity"],
+                    "timestamp": self.latest_data["timestamp"]
+                }
+            }
+        elif "2theta" in self.latest_data and "intensity" in self.latest_data:
+            return {
+                "status": True,
+                "message": "获取数据成功",
+                "data": {
+                    "sample_id": self.latest_data["id_number"],
+                    "theta2": self.latest_data["2theta"],
+                    "intensity": self.latest_data["intensity"],
+                    "timestamp": self.latest_data["timestamp"]
+                }
+            }
+        else:
+            return {
+                "status": False,
+                "message": "获取数据失败",
+                "data": None
+            }
 
     def run(self, 
             single=True, 

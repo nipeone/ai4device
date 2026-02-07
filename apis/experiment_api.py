@@ -80,6 +80,7 @@ def get_experiment_status():
     """
     查询当前实验进度（供 AI Agent 或前端轮询）。
     返回阶段、是否暂停、建议的下一步操作与子流程步骤描述。
+    当 phase=completed 时，result 字段会包含 XRD 最新数据：theta2（2θ 角度列表）、intensity（强度列表）、sample_id、timestamp。
     """
     return experiment_orchestrator.get_status()
 

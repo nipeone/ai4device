@@ -21,6 +21,7 @@ from schemas.experiment import (
     ExperimentPhase,
     ExperimentStatusResponse,
     PHASE_LABELS,
+    XRDResultData,
 )
 
 from flows.mix_flow import mix_flow_mgr
@@ -72,6 +73,8 @@ class ExperimentOrchestrator:
 
         # 用户请求停止（stop() 置 True，start() 清空）
         self._stop_requested = False
+        # 实验成功完成时的 XRD 结果（2theta、intensity），由 get_latest_data 提供
+        self._last_result: Optional[Dict[str, Any]] = None
 
     def _set_phase(
         self,
@@ -266,6 +269,28 @@ class ExperimentOrchestrator:
                 )
                 self._set_phase(ExperimentPhase.ERROR, error_message=msg)
                 return
+            # 实验成功完成：从 XRD 流程获取最新数据（2theta、intensity）并保存
+            if mock:
+                with self._lock:
+                    self._last_result = {
+                        "sample_id": "mock",
+                        "theta2": [],
+                        "intensity": [],
+                        "timestamp": None,
+                    }
+            else:
+                try:
+                    latest = xrd_flow_mgr.get_latest_data()
+                    if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
+                        with self._lock:
+                            self._last_result = latest.get("data")
+                    else:
+                        with self._lock:
+                            self._last_result = None
+                except Exception as e:
+                    logger.log(f"保存XRD结果时忽略异常: {e}", "WARN")
+                    with self._lock:
+                        self._last_result = None
             self._set_phase(ExperimentPhase.COMPLETED, "实验流程已全部完成")
             logger.log("实验总流程完成", "SUCCESS")
         except Exception as e:
@@ -305,6 +330,7 @@ class ExperimentOrchestrator:
             self._error_message = None
             self._step_info = ""
             self._stop_requested = False
+            self._last_result = None
 
         logger.log(
             f"实验启动，任务名称: {self._task_name}，experiment_id: {self._experiment_id}",
@@ -329,12 +355,13 @@ class ExperimentOrchestrator:
         }
 
     def get_status(self) -> ExperimentStatusResponse:
-        """返回当前实验状态（供 Agent 或前端轮询）"""
+        """返回当前实验状态（供 Agent 或前端轮询）；phase=completed 时包含 result（2theta、intensity）。"""
         with self._lock:
             phase = self._phase
             experiment_id = self._experiment_id or "none"
             task_name = self._task_name
             error_message = self._error_message
+            last_result = self._last_result
         step_info = self._get_step_info_from_flows()
 
         is_paused = phase in (
@@ -352,6 +379,10 @@ class ExperimentOrchestrator:
             if phase == ExperimentPhase.XRD_RUNNING
             else None
         )
+        try:
+            result = XRDResultData(**last_result) if isinstance(last_result, dict) and last_result else None
+        except Exception:
+            result = None
 
         return ExperimentStatusResponse(
             experiment_id=experiment_id,
@@ -363,6 +394,7 @@ class ExperimentOrchestrator:
             sub_flow=sub_flow,
             error_message=error_message,
             task_name=task_name,
+            result=result,
         )
 
     def confirm_seal(self) -> None:

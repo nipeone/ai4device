@@ -13,7 +13,7 @@ class ExperimentPhase(str, Enum):
     MIXING = "mixing"                          # 配料中
     WAITING_SEAL_CONFIRM = "waiting_seal_confirm"   # 等待熔封完成确认
     WAITING_THERMAL_LOAD = "waiting_thermal_load"   # 等待人工将样品放入加热炉后确认
-    THERMAL_RUNNING = "thermal_running"        # 热处理（炉子+离心机）执行中
+    THERMAL_RUNNING = "thermal_running"        # 热处理（加热炉+离心机）执行中
     WAITING_XRD_READY = "waiting_xrd_ready"    # 等待人工将样品放入XRD试验台后确认
     XRD_RUNNING = "xrd_running"               # XRD测试执行中
     COMPLETED = "completed"
@@ -26,12 +26,20 @@ PHASE_LABELS: Dict[str, str] = {
     ExperimentPhase.MIXING: "配料进行中",
     ExperimentPhase.WAITING_SEAL_CONFIRM: "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
     ExperimentPhase.WAITING_THERMAL_LOAD: "等待上料：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
-    ExperimentPhase.THERMAL_RUNNING: "热处理进行中（炉子与离心机）",
+    ExperimentPhase.THERMAL_RUNNING: "热处理进行中（加热炉与离心机）",
     ExperimentPhase.WAITING_XRD_READY: "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
     ExperimentPhase.XRD_RUNNING: "XRD测试进行中",
     ExperimentPhase.COMPLETED: "实验已完成",
     ExperimentPhase.ERROR: "实验异常结束",
 }
+
+
+class XRDResultData(BaseModel):
+    """实验完成时 XRD 返回的最新数据（2theta 与 intensity）"""
+    sample_id: Optional[str] = Field(default=None, description="样品ID")
+    theta2: Optional[Any] = Field(default=None, description="2θ 角度列表（度）")
+    intensity: Optional[Any] = Field(default=None, description="强度列表")
+    timestamp: Optional[Any] = Field(default=None, description="时间戳")
 
 
 class ExperimentStatusResponse(BaseModel):
@@ -45,6 +53,7 @@ class ExperimentStatusResponse(BaseModel):
     sub_flow: Optional[str] = Field(default=None, description="当前活跃子流程: mix | thermal | xrd")
     error_message: Optional[str] = Field(default=None, description="若 phase=error 时的错误信息")
     task_name: Optional[str] = Field(default=None, description="配料任务名称（如有）")
+    result: Optional[XRDResultData] = Field(default=None, description="实验完成时的XRD结果（2theta、intensity），仅 phase=completed 时有值")
 
 
 class ThermalParamsRequest(BaseModel):
