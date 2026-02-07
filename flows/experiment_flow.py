@@ -9,6 +9,7 @@
 说明：未引入 Celery。若后续需要任务持久化、多 Worker 或分布式队列，可在此层将
 _run_experiment 拆为多个 Celery task，由本状态机驱动 task 链。
 """
+import random
 import threading
 import time
 import uuid
@@ -36,6 +37,9 @@ except Exception:
     _MOCK_STEP_DELAY = 1.0
 
 CONFIRM_TIMEOUT = 300  # 各阶段等待确认超时（秒）
+# Mock 时每个子流程（配料/热处理/XRD）模拟执行时长范围（秒），便于感知流程是否都执行过
+MOCK_STEP_DURATION_MIN = 30
+MOCK_STEP_DURATION_MAX = 60
 
 
 class ExperimentOrchestrator:
@@ -134,19 +138,28 @@ class ExperimentOrchestrator:
                 return True
         return False
 
+    def _mock_sleep_with_stop_check(self, min_sec: int, max_sec: int) -> None:
+        """
+        Mock 模式下模拟子流程执行时长（秒），期间每秒检查 _stop_requested，便于中途停止。
+        """
+        duration = random.randint(min_sec, max_sec)
+        for _ in range(duration):
+            if self._stop_requested:
+                return
+            time.sleep(1)
+
     def _run_experiment(self, mixer_model: Any) -> None:
         """在后台线程中按状态机执行各阶段（配料 -> 熔封确认 -> 热处理 -> XRD确认 -> XRD测试）"""
         mock = _MOCK_DEVICES
-        delay = _MOCK_STEP_DELAY
         try:
             # ---------- 1. 配料 ----------
             if self._stop_requested:
                 self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
                 return
             self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
-            logger.log("实验流程：开始配料" + (" [Mock 模式，不连接设备]" if mock else ""), "INFO")
+            logger.log("实验流程：开始配料" + (" [Mock 模式，模拟执行 30～60 秒]" if mock else ""), "INFO")
             if mock:
-                time.sleep(delay)
+                self._mock_sleep_with_stop_check(MOCK_STEP_DURATION_MIN, MOCK_STEP_DURATION_MAX)
                 mix_result = {"status": True, "message": "mock 配料完成"}
             else:
                 mix_result = mix_flow_mgr.run(mixer_model)
@@ -198,7 +211,8 @@ class ExperimentOrchestrator:
             curve_points = self._resolve_thermal_curve_points()
             self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中" + (" [Mock]" if mock else ""))
             if mock:
-                time.sleep(delay)
+                logger.log("Mock 热处理：模拟执行 30～60 秒", "INFO")
+                self._mock_sleep_with_stop_check(MOCK_STEP_DURATION_MIN, MOCK_STEP_DURATION_MAX)
                 thermal_result = {"status": True, "message": "mock 热处理完成"}
             else:
                 thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
@@ -232,7 +246,8 @@ class ExperimentOrchestrator:
                 return
             self._set_phase(ExperimentPhase.XRD_RUNNING, "XRD测试执行中" + (" [Mock]" if mock else ""))
             if mock:
-                time.sleep(delay)
+                logger.log("Mock XRD 测试：模拟执行 30～60 秒", "INFO")
+                self._mock_sleep_with_stop_check(MOCK_STEP_DURATION_MIN, MOCK_STEP_DURATION_MAX)
                 xrd_result = {"status": True, "message": "mock XRD 完成"}
             else:
                 xrd_result = xrd_flow_mgr.run(
