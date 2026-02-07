@@ -9,6 +9,10 @@ from schemas.mixer import (
     GetTaskInfoResponse,
     GetResourceInfoRequest,
     GetResourceInfoResponse,
+    GetChemicalsRequest,
+    GetChemicalsResponse,
+    AddChemicalRequest,
+    AddChemicalResponse,
     AddTaskRequest,
     AddTaskResponse,
     BatchStartTaskRequest,
@@ -56,7 +60,7 @@ class MixerController(RestAPIControlledDevice):
                 self.api_headers["Authorization"] = f"{self.api_token_type} {self.api_token}"
                 self.is_connected = True
                 self.message = "配料设备连接成功"
-                self.status = DeviceStatus.connected
+                self.status = DeviceStatus.CONNECTED
                 return True
             else:
                 self.is_connected = False
@@ -64,12 +68,12 @@ class MixerController(RestAPIControlledDevice):
                 self.api_token_type = None
                 self.api_headers = {}
                 self.message = f"获取Token失败，状态码：{response.status_code}"
-                self.status = DeviceStatus.disconnected
+                self.status = DeviceStatus.DISCONNECTED
                 return False
         except requests.exceptions.RequestException as e:
             self.is_connected = False
             self.message = f"获取Token失败: {str(e)}"
-            self.status = DeviceStatus.disconnected
+            self.status = DeviceStatus.DISCONNECTED
             return False
 
     def disconnect(self):
@@ -82,7 +86,7 @@ class MixerController(RestAPIControlledDevice):
         self.api_token_type = None
         self.api_headers = {}
         self.message = "配料设备已断开连接"
-        self.status = DeviceStatus.disconnected
+        self.status = DeviceStatus.DISCONNECTED
 
     def get_task_info(self, task_id: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -145,6 +149,53 @@ class MixerController(RestAPIControlledDevice):
             return self.result
         except requests.exceptions.RequestException as e:
             self.message = f"获取任务信息失败: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
+
+    def get_chemicals(self, sort: str = "desc", offset: int = 0, limit: int = 20, query_key: Optional[str] = None) -> Dict[str, Any]:
+        """
+        获取化学品信息（GetChemicals）
+        :return: 化学品信息
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        try:
+            payload = GetChemicalsRequest(sort=sort, offset=offset, limit=limit, query_key=query_key)
+            response = requests.get(
+                f"{self.api_base_url}/api/v1/knowledge/getChemicalList",
+                params=payload.model_dump(),
+                timeout=10,
+                headers=self.api_headers
+            )
+            response.raise_for_status()
+            data = GetChemicalsResponse(**response.json())
+            return {"status": "success", "data": data}
+        except requests.exceptions.RequestException as e:
+            self.message = f"获取化学品信息失败: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
+
+    def add_chemical(self, chemical_name: str) -> Dict[str, Any]:
+        """
+        添加化学品（AddChemical）
+        :param chemical_name: 化学品名称
+        :return: 添加结果
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        try:
+            payload = AddChemicalRequest(name=chemical_name)
+            response = requests.post(
+                f"{self.api_base_url}/api/v1/knowledge/addChemical",
+                json=payload.model_dump(),
+                timeout=10,
+                headers=self.api_headers
+            )
+            response.raise_for_status()
+            data = AddChemicalResponse(**response.json())
+            return {"status": "success", "data": data}
+        except requests.exceptions.RequestException as e:
+            self.message = f"添加化学品信息失败: {str(e)}"
             self.result = {"status": "error", "message": self.message}
             return self.result
 
@@ -235,7 +286,7 @@ class MixerController(RestAPIControlledDevice):
             # 更新当前任务状态
             self.current_task_id = task_id
             if "code" in data and data["code"] == 200:
-                self.status = DeviceStatus.running
+                self.status = DeviceStatus.RUNNING
             
             self.message = f"启动任务成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
@@ -296,7 +347,7 @@ class MixerController(RestAPIControlledDevice):
             # 更新当前任务状态
             if task_id == self.current_task_id:
                 if "code" in data and data["code"] == 200:
-                    self.status = DeviceStatus.paused
+                    self.status = DeviceStatus.PAUSED
             
             self.message = f"暂停任务成功: task_id={task_id}"
             self.result = {"status": "success", "data": data}
@@ -331,7 +382,7 @@ class MixerController(RestAPIControlledDevice):
             # 更新当前任务状态
             if task_id == self.current_task_id:
                 if "code" in data and data["code"] == 200:
-                    self.status = DeviceStatus.cancelled
+                    self.status = DeviceStatus.CANCELLED
                     self.current_task_id = None
                     self.current_task_status = None
             
@@ -364,7 +415,7 @@ class MixerController(RestAPIControlledDevice):
 
             if task_id == self.current_task_id:
                 if "code" in data and data["code"] == 200:
-                    self.status = DeviceStatus.unknown
+                    self.status = DeviceStatus.UNKNOWN
                     self.current_task_id = None
                     self.current_task_status = None
             self.message = f"删除任务成功: task_id={task_id}"

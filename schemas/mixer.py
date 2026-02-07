@@ -23,7 +23,7 @@ class GetTokenResponse(BaseModel):
 
 class CustomConfig(BaseModel):
     """配料自定义单位配置"""
-    unit: str
+    unit: str = "mg"
     unitOptions: List[str] = ["mg", "g"]
 
 # 工艺JSON配置模型
@@ -31,11 +31,11 @@ class ProcessJson(BaseModel):
     """布局项的工艺参数配置"""
     resource_type: str = "CC10R10C"
     substance: str = "Sb" # 物质名称（如氯化亚铜，"Sb"/"Bi"）
-    chemical_id: int = 44 # 化学品ID
-    SSSI: str = "2-00-25-9" # 化学物质登记号（如"2-00-25-9"）
+    chemical_id: Optional[int] = None # 化学品ID
+    SSSI: Optional[str] = None # 化学物质登记号（如"2-00-25-9"）
     add_weight: float = 0.0  # 添加重量
-    offset: float = 0.3 # 偏移量
-    custom: CustomConfig = CustomConfig(unit="mg", unitOptions=["mg", "g"]) # 嵌套的自定义单位配置
+    offset: Optional[float] = 0.3 # 偏移量
+    custom: CustomConfig = Field(default_factory=CustomConfig) # 嵌套的自定义单位配置
 
 # 布局列表项模型
 class LayoutListItem(BaseModel):
@@ -50,7 +50,7 @@ class LayoutListItem(BaseModel):
     unit_column: int = 0  # 单元列号
     unit_row: int = 0  # 单元行号
     unit_id: str = ""  # 单元唯一标识
-    process_json: ProcessJson = ProcessJson()  # 嵌套的工艺参数
+    process_json: ProcessJson = Field(default_factory=ProcessJson)  # 嵌套的工艺参数
 
 # 任务设置模型
 class TaskSetup(BaseModel):
@@ -85,6 +85,57 @@ class GetTaskInfoRequest(BaseModel):
 
 class GetResourceInfoRequest(BaseModel):
     roll: int
+
+class GetChemicalsRequest(BaseModel):
+    sort: str = "desc"
+    offset: int = 0
+    limit: int = 20
+    query_key: Optional[str] = None
+
+
+class ChemicalListItem(BaseModel):
+    fid: int
+    name: str
+    sssi: str
+    cas: Optional[str] = None
+    element: Optional[str] = None
+    state: Optional[str] = None
+    concentration_str: Optional[str] = None
+    chemical_properties: Optional[str] = None
+    edit_operation: Optional[str] = None
+    delete_operation: Optional[str] = None
+    preparation_method: Optional[str] = None
+
+class ChemicalData(BaseModel):
+    chemical_sums: int = 0
+    chemical_list: List[ChemicalListItem] = []
+
+class GetChemicalsResponse(BaseModel):
+    code: int
+    msg: str
+    result: Optional[ChemicalData]
+    data: Optional[ChemicalData]
+
+class AddChemicalRequest(BaseModel):
+    name: str
+    cas: Optional[str] = None
+    state: Optional[str] = None
+    element: Optional[str] = None
+    concentration_str: Optional[str] = None
+    density_str: Optional[str] = None
+    pipetting_compensation: Optional[Dict[str, Any]] = None
+    chemical_properties: Optional[str] = None
+    molecular_formula: Optional[str] = None
+    molecular_weight: Optional[float] = None
+    preparation_method: Optional[str] = None
+
+class AddChemicalResponseResult(BaseModel):
+    chemical_id: int
+
+class AddChemicalResponse(BaseModel):
+    code: int
+    msg: str
+    result: Optional[AddChemicalResponseResult]
 
 class ResourceListItem(BaseModel):
     fid: int = Field(default=0, description="资源ID")

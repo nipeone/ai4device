@@ -83,22 +83,35 @@ class ExperimentOrchestrator:
         return self._step_info
 
     def _resolve_thermal_curve_points(self) -> list:
-        """根据当前 thermal_params 解析曲线点"""
+        """根据当前 thermal_params 解析曲线点：优先 curve_points，其次 curve_name，最后默认"""
         params = self._thermal_params or {}
+        # 启动时由 LLM 入参传入的曲线点（List[CurvePoint] 或 list of dict）
+        raw_points = params.get("curve_points")
+        if raw_points:
+            points = []
+            for p in raw_points:
+                if isinstance(p, CurvePoint):
+                    points.append(p)
+                elif isinstance(p, dict):
+                    points.append(CurvePoint(**p))
+                else:
+                    points.append(CurvePoint(temperature=float(getattr(p, "temperature", 0)), time=float(getattr(p, "time", 0))))
+            if points:
+                return points
         curve_name = params.get("curve_name")
-        points = []
         if curve_name:
             points = oven_service.get_oven_curve_by_name(curve_name)
-        if not points:
-            curve_list = oven_service.get_oven_curve_list()
-            if curve_list:
-                points = oven_service.get_oven_curve_by_name(curve_list[0].curve_name)
-        if not points:
-            points = [
-                CurvePoint(temperature=100.0, time=60.0),
-                CurvePoint(temperature=-121.0, time=0.0),
-            ]
-        return points
+            if points:
+                return points
+        curve_list = oven_service.get_oven_curve_list()
+        if curve_list:
+            points = oven_service.get_oven_curve_by_name(curve_list[0].curve_name)
+            if points:
+                return points
+        return [
+            CurvePoint(temperature=100.0, time=60.0),
+            CurvePoint(temperature=-121.0, time=0.0),
+        ]
 
     def _run_experiment(self, mixer_model: Any) -> None:
         """在后台线程中按状态机执行各阶段（配料 -> 熔封确认 -> 热处理 -> XRD确认 -> XRD测试）"""
@@ -187,9 +200,15 @@ class ExperimentOrchestrator:
 
     # ------------------------- 对外 API（供 experiment_api 调用）-------------------------
 
-    def start(self, mixer_model: Any) -> Dict[str, Any]:
+    def start(
+        self,
+        mixer_model: Any,
+        thermal_params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         启动一次新实验（非阻塞）。若当前已有实验在运行或等待确认，抛出 ValueError。
+        thermal_params 可选：oven_id, qty, curve_name 或 curve_points（List[CurvePoint]），
+        用于热处理阶段；若在 start 时传入 curve_points，则无需在 confirm_thermal_load 再传曲线。
         返回包含 experiment_id、phase、phase_label 的字典。
         """
         with self._lock:
@@ -205,7 +224,7 @@ class ExperimentOrchestrator:
             self._experiment_id = str(uuid.uuid4())
             self._task_name = getattr(mixer_model, "task_name", None)
             self._phase = ExperimentPhase.IDLE
-            self._thermal_params = None
+            self._thermal_params = thermal_params.copy() if thermal_params else None
             self._error_message = None
             self._step_info = ""
 
@@ -278,13 +297,16 @@ class ExperimentOrchestrator:
         oven_id: int = 1,
         qty: int = 1,
         curve_name: Optional[str] = None,
+        curve_points: Optional[list] = None,
     ) -> None:
-        """确认样品已放入加热炉，可选传入热处理参数"""
+        """确认样品已放入加热炉，可选传入热处理参数；与 start 时的 thermal_params 合并，保留已有 curve_points（若未传 curve_name/curve_points）"""
         with self._lock:
+            prev = self._thermal_params or {}
             self._thermal_params = {
                 "oven_id": oven_id,
                 "qty": qty,
-                "curve_name": curve_name,
+                "curve_name": curve_name or prev.get("curve_name"),
+                "curve_points": curve_points if curve_points is not None else prev.get("curve_points"),
             }
         self._thermal_load_confirm.set()
         logger.log("加热炉上料确认已接收", "INFO")

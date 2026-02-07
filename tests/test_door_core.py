@@ -32,14 +32,14 @@ class TestConnectDisconnect:
         print(controller.message)
         assert ok is True
         assert controller.is_connected is True
-        assert controller.status == DeviceStatus.connected
+        assert controller.status == DeviceStatus.CONNECTED
         assert "连接成功" in controller.message
 
     def test_disconnect_clears_state(self, controller: DoorController):
         controller.connect()
         controller.disconnect()
         assert controller.is_connected is False
-        assert controller.status == DeviceStatus.disconnected
+        assert controller.status == DeviceStatus.DISCONNECTED
         assert "已断开连接" in controller.message
 
 class TestGetDoorStatus:

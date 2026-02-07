@@ -130,7 +130,7 @@ class XRDController(BaseDevice):
             # 连接到设备
             self.socket.connect((self.host, self.port))
             self.is_connected = True
-            self.status = DeviceStatus.connected
+            self.status = DeviceStatus.CONNECTED
             logger.debug(f"connect to {self.host}:{self.port}")
             self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
             return True
@@ -150,7 +150,7 @@ class XRDController(BaseDevice):
             #     return False
         except socket.timeout:
             self.is_connected = False
-            self.status = DeviceStatus.disconnected
+            self.status = DeviceStatus.DISCONNECTED
             self.message = "XRD衍射仪连接超时"
             if self.socket:
                 try:
@@ -161,7 +161,7 @@ class XRDController(BaseDevice):
             return False
         except Exception as e:
             self.is_connected = False
-            self.status = DeviceStatus.disconnected
+            self.status = DeviceStatus.DISCONNECTED
             self.message = f"XRD衍射仪设备连接失败: {str(e)}"
             if self.socket:
                 try:
@@ -180,7 +180,7 @@ class XRDController(BaseDevice):
                 pass
             self.socket = None
         self.is_connected = False
-        self.status = DeviceStatus.disconnected
+        self.status = DeviceStatus.DISCONNECTED
         self.message = "XRD衍射仪设备已断开连接"
 
     # ===================== API命令实现 =====================

@@ -82,7 +82,7 @@ class TestConnectDisconnect:
         ok = mixer.connect()
         assert ok is True
         assert mixer.is_connected is True
-        assert mixer.status == DeviceStatus.connected
+        assert mixer.status == DeviceStatus.CONNECTED
         assert mixer.api_token_type == "bearer"
         assert "连接成功" in mixer.message
 
@@ -110,7 +110,7 @@ class TestConnectDisconnect:
         assert mixer.api_token is None
         assert mixer.api_token_type is None
         assert mixer.api_headers == {}
-        assert mixer.status == DeviceStatus.disconnected
+        assert mixer.status == DeviceStatus.DISCONNECTED
         assert "已断开连接" in mixer.message
 
 

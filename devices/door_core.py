@@ -35,7 +35,7 @@ class DoorController(SocketControlledDevice):
             # 连接socket到目标地址
             # self.socket.connect(self.target_address)
             self.is_connected = True
-            self.status = DeviceStatus.connected
+            self.status = DeviceStatus.CONNECTED
             self.message = "防护门设备连接成功"
             logger.debug(f"connected to {self.target_address}")
             
@@ -43,7 +43,7 @@ class DoorController(SocketControlledDevice):
             return True
         except Exception as e:
             self.is_connected = False
-            self.status = DeviceStatus.disconnected
+            self.status = DeviceStatus.DISCONNECTED
             self.message = f"防护门设备连接失败: {str(e)}"
             self._cleanup_socket()
             return False
@@ -52,7 +52,7 @@ class DoorController(SocketControlledDevice):
         """断开ZMQ设备连接"""
         super().disconnect()  # 调用基类的断开逻辑
         self.is_connected = False
-        self.status = DeviceStatus.disconnected
+        self.status = DeviceStatus.DISCONNECTED
         self.message = "防护门设备已断开连接"
 
     def get_door_status(self, door_index: int):

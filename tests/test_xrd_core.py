@@ -33,12 +33,12 @@ class TestConnectDisconnect:
         ok = xrd.connect()
         assert ok is True
         assert xrd.is_connected is True
-        assert xrd.status == DeviceStatus.connected
+        assert xrd.status == DeviceStatus.CONNECTED
         assert "连接成功" in xrd.message
 
     def test_disconnect_clears_state(self, xrd: XRDController):
         xrd.connect()
         xrd.disconnect()
         assert xrd.is_connected is False
-        assert xrd.status == DeviceStatus.disconnected
+        assert xrd.status == DeviceStatus.DISCONNECTED
         assert "已断开连接" in xrd.message

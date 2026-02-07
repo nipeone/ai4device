@@ -22,7 +22,7 @@ class ExperimentPhase(str, Enum):
 
 # 阶段说明（供 Agent 理解当前状态与下一步动作）
 PHASE_LABELS: Dict[str, str] = {
-    ExperimentPhase.IDLE: "空闲，可上传Excel启动实验",
+    ExperimentPhase.IDLE: "空闲，可启动实验",
     ExperimentPhase.MIXING: "配料进行中",
     ExperimentPhase.WAITING_SEAL_CONFIRM: "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
     ExperimentPhase.WAITING_THERMAL_LOAD: "等待上料：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",

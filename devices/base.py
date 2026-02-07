@@ -3,6 +3,8 @@ import requests
 from datetime import datetime
 import time
 from enum import Enum
+from typing import Optional, Any, Literal
+from pydantic import BaseModel, Field
 
 # PLC通信库（snap7）
 try:
@@ -15,19 +17,24 @@ except ImportError:
     SNAP7_AVAILABLE = False
 
 class DeviceStatus(Enum):
-    idle = "就绪"
-    connected = "已连接"
-    disconnected = "未连接"
-    started = "已启动"
-    running = "运行中"
-    paused = "暂停"
-    cancelled = "已取消"
-    completed = "已完成"
-    stopped = "已停止"
-    error = "错误"
-    timeout = "超时"
-    abnormal = "异常"
-    unknown = "未知"
+    IDLE = "就绪"
+    CONNECTED = "已连接"
+    DISCONNECTED = "未连接"
+    STARTED = "已启动"
+    RUNNING = "运行中"
+    PAUSED = "暂停"
+    CANCELLED = "已取消"
+    COMPLETED = "已完成"
+    STOPPED = "已停止"
+    ERROR = "错误"
+    TIMEOUT = "超时"
+    ABNORMAL = "异常"
+    UNKNOWN = "未知"
+
+class DeviceResult(BaseModel):
+    status: Literal["success", "error"] = Field(..., description="状态，success:成功，error:失败")
+    message: Optional[str] = Field(default=None, description="消息")
+    data: Optional[Any] = Field(default=None, description="数据")
 
 # ===================== 1. 设备基类（所有设备的通用接口） =====================
 class BaseDevice(ABC):
@@ -40,7 +47,7 @@ class BaseDevice(ABC):
         self.is_connected = False             # 设备连接状态
         self.result = None                    # 设备结果
         self.message = None                   # 设备消息
-        self.status = DeviceStatus.unknown    # 设备状态: 默认未知
+        self.status = DeviceStatus.UNKNOWN    # 设备状态: 默认未知
 
     @abstractmethod
     def connect(self):

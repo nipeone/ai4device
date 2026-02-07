@@ -30,7 +30,7 @@ class TestConnectDisconnect:
         ok = controller.connect()
         assert ok is True
         assert controller.is_connected is True
-        assert controller.status == DeviceStatus.connected
+        assert controller.status == DeviceStatus.CONNECTED
         assert "连接成功" in controller.message
         controller.disconnect()
         assert controller.is_connected is False
