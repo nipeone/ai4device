@@ -22,6 +22,8 @@ from services.experiment_input import (
 from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest
 from schemas.llm_output import StartExperimentRequest
 
+from logger import sys_logger as logger
+
 router = APIRouter(prefix="/api/experiment", tags=["实验"])
 
 
@@ -41,8 +43,10 @@ async def start_experiment(body: StartExperimentRequest):
     add_task = llm_output_to_add_task_request(body)
     # 工艺曲线数据
     curve_points = llm_output_to_curve_points(body)
+    logger.info(f"add_task: {add_task}")
+    logger.info(f"curve_points: {curve_points}")
     thermal_params = {
-        "oven_id": 1,
+        "oven_id": 3,
         "qty": 1,
         "curve_points": [p.model_dump() for p in curve_points],
     }

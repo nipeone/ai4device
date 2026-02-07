@@ -133,11 +133,12 @@ def llm_output_to_add_task_request(req: StartExperimentRequest, check_chemical: 
             process_json = ProcessJson(
                 resource_type="CC10R10C",
                 substance=substance,
-                chemical_id=chemical_id,
-                SSSI=sssi,
                 add_weight=round(add_weight, 4),
                 offset=0.0,
             )
+            if check_chemical:
+                process_json.chemical_id = chemical_id
+                process_json.SSSI = sssi
             layout_item = LayoutListItem(
                 layout_code="",
                 src_layout_code="",
@@ -148,7 +149,7 @@ def llm_output_to_add_task_request(req: StartExperimentRequest, check_chemical: 
                 unit_type="exp_add_powder",
                 unit_column=0,
                 unit_row=0,
-                unit_id=f"unit-{uuid.uuid4()[:8]}",
+                unit_id=f"unit-{str(uuid.uuid4())[:8]}",
                 process_json=process_json,
             )
             layout_list.append(layout_item)
