@@ -34,7 +34,7 @@ async def start_experiment(body: StartExperimentRequest):
 
     从 body 中提取：
     - 工艺配方.原料 -> 配料任务 AddTaskRequest（每个原料对应一个 LayoutListItem）
-    - 温度程序 -> 加热炉曲线 List[CurvePoint]（升温/保温/降温段，时间单位分钟）
+    - 温度程序 -> 加热炉曲线 List[CurvePoint]（升温/保温/降温段，时间单位为小时）
 
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     返回 experiment_id 与当前 phase，可通过 GET /api/experiment/status 查询进度。
@@ -113,3 +113,14 @@ def confirm_xrd_ready():
     """确认样品已放入 XRD 试验台，流程将开始 XRD 测试。"""
     experiment_orchestrator.confirm_xrd_ready()
     return {"msg": "XRD上样确认已接收，开始XRD测试"}
+
+
+@router.post("/stop", tags=["实验"])
+def stop_experiment():
+    """
+    请求停止当前实验。若实验正在运行或处于某一「等待确认」阶段，将下发停止请求；
+    后台线程会在下一轮检查时退出，phase 变为 error，error_message 为「用户停止实验」。
+    返回已是否成功发出停止请求（无实验在跑时返回 false）。
+    """
+    ok = experiment_orchestrator.stop()
+    return {"stopped": ok, "msg": "已请求停止实验" if ok else "当前无实验在运行"}

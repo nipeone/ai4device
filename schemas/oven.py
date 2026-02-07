@@ -72,8 +72,8 @@ class OvenStatusResponse(BaseResponse):
     data: Optional[List[OvenSystemStatus]] = Field(default=None, description="所有炉子状态数据")
 
 class CurvePoint(BaseModel):
-    temperature: float = Field(default=0.0, description="温度")
-    time: float = Field(default=0.0, description="时间")
+    temperature: float = Field(default=0.0, description="温度（℃）")
+    time: float = Field(default=0.0, description="时间，单位：小时（与 thermal_flow、LLM 温度程序一致）")
 
 class OvenCurveResponse(BaseResponse):
     data: Optional[List[CurvePoint]] = Field(default=None, description="曲线点数据")
@@ -86,7 +86,7 @@ class OvenCurveRequest(BaseModel):
     curve_name: str = Field(default=None, description="曲线名称，如果不填则不保存")
     points: List[CurvePoint] = Field(
         default=[CurvePoint(temperature=0.0, time=0.0) for _ in range(10)],
-        description="曲线点列表，包含温度和时间。建议上传10段数据。")
+        description="曲线点列表，温度单位℃，时间单位小时。建议上传10段数据。")
 
 class OvenCurveByNameRequest(BaseModel):
     oven_id: int = Field(..., description="炉子ID")

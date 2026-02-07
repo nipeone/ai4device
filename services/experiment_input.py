@@ -171,7 +171,7 @@ def llm_output_to_add_task_request(req: StartExperimentRequest, check_chemical: 
 def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
     """
     从大模型规范输出的温度程序生成加热炉曲线 List[CurvePoint]。
-    时间单位：分钟（与现有炉控一致）；温度单位：摄氏度。
+    时间单位：小时（与现有炉控一致）；温度单位：摄氏度。
     曲线段：升温到最高温 -> 最高温保温 -> 主降温；最后一点用 time=-121 表示结束（与 thermal_flow 约定一致）。
     """
     tp: TemperatureProgram = req.温度程序
@@ -181,9 +181,9 @@ def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
     cool_rate = tp.降温速率_主降温_摄氏度每小时 or 0.0
     cool_h = tp.降温时间_主降温_h or 0.0
 
-    ramp_min = ramp_h * 60.0
-    hold_min = hold_h * 60.0
-    cool_min = cool_h * 60.0
+    ramp_min = ramp_h
+    hold_min = hold_h
+    cool_min = cool_h
     T_drop = cool_rate * cool_h
     T_end = max(0.0, T_high - T_drop)
 
@@ -208,7 +208,7 @@ def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
 
     if not points:
         points = [
-            CurvePoint(temperature=100.0, time=60.0),
+            CurvePoint(temperature=100.0, time=1.0),
             CurvePoint(temperature=-121.0, time=0.0),
         ]
     else:

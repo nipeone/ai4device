@@ -66,6 +66,9 @@ class ExperimentOrchestrator:
         self._xrd_ready_confirm = threading.Event()
         self._xrd_ready_confirm.set()
 
+        # 用户请求停止（stop() 置 True，start() 清空）
+        self._stop_requested = False
+
     def _set_phase(
         self,
         phase: ExperimentPhase,
@@ -115,10 +118,21 @@ class ExperimentOrchestrator:
             points = oven_service.get_oven_curve_by_name(curve_list[0].curve_name)
             if points:
                 return points
+        # 默认曲线：时间单位为小时（与 thermal_flow、llm_output_to_curve_points 一致）
         return [
-            CurvePoint(temperature=100.0, time=60.0),
+            CurvePoint(temperature=100.0, time=1.0),
             CurvePoint(temperature=-121.0, time=0.0),
         ]
+
+    def _wait_confirm_or_stop(self, event: threading.Event, timeout: float) -> bool:
+        """等待 event 被 set，或超时，或用户调用了 stop()。返回 True 表示确认完成，False 表示超时或已停止。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._stop_requested:
+                return False
+            if event.wait(timeout=1.0):
+                return True
+        return False
 
     def _run_experiment(self, mixer_model: Any) -> None:
         """在后台线程中按状态机执行各阶段（配料 -> 熔封确认 -> 热处理 -> XRD确认 -> XRD测试）"""
@@ -126,6 +140,9 @@ class ExperimentOrchestrator:
         delay = _MOCK_STEP_DELAY
         try:
             # ---------- 1. 配料 ----------
+            if self._stop_requested:
+                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                return
             self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
             logger.log("实验流程：开始配料" + (" [Mock 模式，不连接设备]" if mock else ""), "INFO")
             if mock:
@@ -133,6 +150,9 @@ class ExperimentOrchestrator:
                 mix_result = {"status": True, "message": "mock 配料完成"}
             else:
                 mix_result = mix_flow_mgr.run(mixer_model)
+            if self._stop_requested:
+                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                return
             if not mix_result.get("status"):
                 self._set_phase(
                     ExperimentPhase.ERROR,
@@ -143,23 +163,35 @@ class ExperimentOrchestrator:
             logger.log("等待熔封完成，请调用 POST /api/experiment/flux/confirm_seal", "WARN")
 
             self._seal_confirm.clear()
-            if not self._seal_confirm.wait(timeout=self._confirm_timeout):
-                self._set_phase(ExperimentPhase.ERROR, error_message="等待熔封确认超时")
+            if not self._wait_confirm_or_stop(self._seal_confirm, self._confirm_timeout):
+                if self._stop_requested:
+                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                else:
+                    self._set_phase(ExperimentPhase.ERROR, error_message="等待熔封确认超时")
                 return
             logger.log("熔封已确认", "INFO")
 
             # ---------- 2. 等待加热炉上料确认 ----------
+            if self._stop_requested:
+                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                return
             self._set_phase(
                 ExperimentPhase.WAITING_THERMAL_LOAD,
                 "请将样品放入加热炉后调用 confirm_thermal_load",
             )
             self._thermal_load_confirm.clear()
-            if not self._thermal_load_confirm.wait(timeout=self._confirm_timeout):
-                self._set_phase(ExperimentPhase.ERROR, error_message="等待加热炉上料确认超时")
+            if not self._wait_confirm_or_stop(self._thermal_load_confirm, self._confirm_timeout):
+                if self._stop_requested:
+                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                else:
+                    self._set_phase(ExperimentPhase.ERROR, error_message="等待加热炉上料确认超时")
                 return
             logger.log("加热炉上料已确认，开始热处理", "INFO")
 
             # ---------- 3. 热处理 ----------
+            if self._stop_requested:
+                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                return
             params = self._thermal_params or {}
             oven_id = int(params.get("oven_id", 1))
             qty = int(params.get("qty", 1))
@@ -182,13 +214,22 @@ class ExperimentOrchestrator:
                 "WARN",
             )
 
+            if self._stop_requested:
+                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                return
             self._xrd_ready_confirm.clear()
-            if not self._xrd_ready_confirm.wait(timeout=self._confirm_timeout):
-                self._set_phase(ExperimentPhase.ERROR, error_message="等待XRD上样确认超时")
+            if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
+                if self._stop_requested:
+                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                else:
+                    self._set_phase(ExperimentPhase.ERROR, error_message="等待XRD上样确认超时")
                 return
             logger.log("XRD上样已确认，开始XRD测试", "INFO")
 
             # ---------- 4. XRD 测试 ----------
+            if self._stop_requested:
+                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                return
             self._set_phase(ExperimentPhase.XRD_RUNNING, "XRD测试执行中" + (" [Mock]" if mock else ""))
             if mock:
                 time.sleep(delay)
@@ -248,6 +289,7 @@ class ExperimentOrchestrator:
             self._thermal_params = thermal_params.copy() if thermal_params else None
             self._error_message = None
             self._step_info = ""
+            self._stop_requested = False
 
         logger.log(
             f"实验启动，任务名称: {self._task_name}，experiment_id: {self._experiment_id}",
@@ -336,6 +378,28 @@ class ExperimentOrchestrator:
         """确认样品已放入 XRD 试验台"""
         self._xrd_ready_confirm.set()
         logger.log("XRD上样确认已接收", "INFO")
+
+    def stop(self) -> bool:
+        """
+        请求停止当前实验。若正在运行或处于等待确认阶段，将置位停止标志并唤醒等待，
+        后台线程会在下一轮检查时退出并将 phase 置为 ERROR（error_message="用户停止实验"）。
+        返回 True 表示已发出停止请求，False 表示当前无实验在跑。
+        """
+        with self._lock:
+            if self._phase in (
+                ExperimentPhase.IDLE,
+                ExperimentPhase.COMPLETED,
+                ExperimentPhase.ERROR,
+            ) and not self._runner_thread:
+                return False
+            self._stop_requested = True
+        self._seal_confirm.set()
+        self._thermal_load_confirm.set()
+        self._xrd_ready_confirm.set()
+        thermal_flow_mgr.stop()
+        xrd_flow_mgr.stop()
+        logger.log("已请求停止实验", "WARN")
+        return True
 
 
 # 单例，供 API 层注入使用（无全局分散状态）
