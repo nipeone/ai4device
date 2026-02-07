@@ -38,8 +38,8 @@ except Exception:
 
 CONFIRM_TIMEOUT = 300  # 各阶段等待确认超时（秒）
 # Mock 时每个子流程（配料/热处理/XRD）模拟执行时长范围（秒），便于感知流程是否都执行过
-MOCK_STEP_DURATION_MIN = 30
-MOCK_STEP_DURATION_MAX = 60
+MOCK_STEP_DURATION_MIN = 20
+MOCK_STEP_DURATION_MAX = 30
 
 
 class ExperimentOrchestrator:
