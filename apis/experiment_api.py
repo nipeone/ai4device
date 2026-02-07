@@ -1,11 +1,13 @@
 """
 实验总流程 API：委托给 flows.experiment_flow 中的状态机编排器，无全局状态。
 
+启动实验：
+- POST /flux：入参为大模型规范输出（JSON，见 schemas/llm_output.py），
+  从中提取原料 -> AddTaskRequest、温度程序 -> List[CurvePoint]，并可选炉号/数量。
+- POST /flux/from_excel：兼容旧版，上传 Excel 解析为配料任务（无温度曲线，曲线由 confirm_thermal_load 或默认提供）。
+
 流程节点：
   配料 -> [等待熔封确认] -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
-
-Agent 可通过 GET /api/experiment/status 获取 phase、step_info、pending_action，
-在对应阶段调用 confirm 接口恢复流程。
 """
 from typing import Optional
 
@@ -13,17 +15,48 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from flows.experiment_flow import experiment_orchestrator
 from services.mixer import mixer_service
+from services.experiment_input import (
+    llm_output_to_add_task_request,
+    llm_output_to_curve_points,
+)
 from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest
+from schemas.llm_output import StartExperimentRequest
 
 router = APIRouter(prefix="/api/experiment", tags=["实验"])
 
 
 @router.post("/flux", tags=["实验"])
-async def start_experiment(file: UploadFile = File(...)):
+async def start_experiment(body: StartExperimentRequest):
     """
-    上传 Excel 启动实验总流程（非阻塞）。
-    流程在后台由编排器执行，在熔封/上料/XRD上样等节点暂停，等待确认接口被调用后继续。
+    使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
+
+    从 body 中提取：
+    - 工艺配方.原料 -> 配料任务 AddTaskRequest（每个原料对应一个 LayoutListItem）
+    - 温度程序 -> 加热炉曲线 List[CurvePoint]（升温/保温/降温段，时间单位分钟）
+
+    流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     返回 experiment_id 与当前 phase，可通过 GET /api/experiment/status 查询进度。
+    """
+    # 配料数据
+    add_task = llm_output_to_add_task_request(body)
+    # 工艺曲线数据
+    curve_points = llm_output_to_curve_points(body)
+    thermal_params = {
+        "oven_id": 1,
+        "qty": 1,
+        "curve_points": [p.model_dump() for p in curve_points],
+    }
+    try:
+        result = experiment_orchestrator.start(add_task, thermal_params=thermal_params)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/flux/from_excel", tags=["实验"])
+async def start_experiment_from_excel(file: UploadFile = File(...)):
+    """
+    兼容旧版：上传 Excel 启动实验，仅解析配料任务；温度曲线由 confirm_thermal_load 传入曲线名或使用默认。
     """
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="只支持上传 Excel 文件(.xlsx, .xls)")
@@ -58,7 +91,7 @@ def confirm_flux_seal():
 def confirm_thermal_load(body: Optional[ThermalParamsRequest] = None):
     """
     确认样品已放入加热炉，并可选传入热处理参数（炉号、数量、曲线名）。
-    调用后流程将开始热处理（炉子+离心机）。
+    若启动时已通过 LLM 输出传入曲线，此处可不传曲线名，仅确认上料即可。
     """
     if body:
         experiment_orchestrator.confirm_thermal_load(
