@@ -1,0 +1,47 @@
+{
+    "文献ID": "Not specified",
+    "配方ID": "rec_0002",
+    "实验目的": "高温热电材料应用与物理性质研究",
+    "目标产物信息": {
+        "化学式": "REMn2Si2 (RE=Y, Er)",
+        "结构原型": "ThCr2Si2-type",
+        "是否二维": false,
+        "是否半导体": false
+    },
+    "工艺配方": {
+        "生长方法": "Pb flux method",
+        "原料": "Y, Er, Mn, Si",
+        "助熔剂信息": "99.99% Pb piece... Lead was added to these mixtures at a ratio of 3.8:1 in weight.",
+        "容器": "hBN crucible",
+        "籽晶": "Not specified",
+        "原料摩尔比_原文": "Y or Er, Mn and Si were mixed together at atomic ratios of RE:Mn:Si=0.5–1.5:1.0:1.0.",
+        "原料摩尔比_标准化": "RE:Mn:Si = 0.5-1.5:1:1",
+        "助熔剂_对_溶质_摩尔比": null,
+        "助熔剂家族标签": ["Pb_flux"]
+    },
+    "温度程序": {
+        "是否存在次高温预反应段": "否",
+        "升温到次高温时间_h": null,
+        "次高温段温度_摄氏": null,
+        "次高温段保温时间_h": null,
+        "升温到最高温时间_h": 4.42,
+        "最高温段保温温度_摄氏": 1350.0,
+        "最高温段保温时间_h": 5.0,
+        "降温速率_主降温_℃每小时": 50.0,
+        "降温时间_主降温_h": 11.0,
+        "低温段保温温度_摄氏": null,
+        "低温段保温时间_h": null,
+        "冷却速率_至室温_标签": "快冷"
+    },
+    "分离与后处理": {
+        "分离方式": "Chemical dissolution",
+        "分离温度_摄氏": null,
+        "晶体的进一步处理": "removed from the melt using a solution of dilute acetic acid and hydrogen peroxide for 5 days"
+    },
+    "晶体信息": {
+        "晶体形态结构": "thin plates with well-developed (001) faces",
+        "最大尺寸_mm": "",
+        "形貌标签": "plate_like",
+        "是否单晶": true
+    }
+}
