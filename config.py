@@ -51,5 +51,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = os.getenv("LOG_FILE", "logs/app.log")
 
 # ===================== 其他配置 =====================
-# 可以添加其他配置项
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# ===================== 本地测试 / Mock 模式 =====================
+# 设为 true 时，实验流程不连接真实设备，各子流程（配料/热处理/XRD）仅模拟成功，用于本地完整跑通 API
+MOCK_DEVICES = os.getenv("MOCK_DEVICES", "false").lower() in ("true", "1", "yes")
+MOCK_STEP_DELAY = float(os.getenv("MOCK_STEP_DELAY", "1.0"))  # 每步模拟耗时（秒），便于观察阶段切换

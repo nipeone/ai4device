@@ -24,16 +24,19 @@ from devices.door_core import door_controller
 async def lifespan(app: FastAPI):
     # Startup
     logger.log("系统服务启动...", "INFO")
-    if not robot_controller.connect():
-        logger.log(f"机器人连接失败: {robot_controller.get_message()}", "ERROR")
-    if not mixer_controller.connect():
-        logger.log(f"配料设备连接失败: {mixer_controller.get_message()}", "ERROR")
-    if not centrifuge_controller.connect():
-        logger.log(f"离心机连接失败: {centrifuge_controller.get_message()}", "ERROR")
-    if not oven_controller.connect():
-        logger.log(f"高温炉连接失败: {oven_controller.get_message()}", "ERROR")
-    if not door_controller.connect():
-        logger.log(f"玻璃门连接失败: {door_controller.get_message()}", "ERROR")
+    if getattr(config, "MOCK_DEVICES", False):
+        logger.log("MOCK_DEVICES 已开启，跳过设备连接，实验流程将模拟执行", "WARN")
+    else:
+        if not robot_controller.connect():
+            logger.log(f"机器人连接失败: {robot_controller.get_message()}", "ERROR")
+        if not mixer_controller.connect():
+            logger.log(f"配料设备连接失败: {mixer_controller.get_message()}", "ERROR")
+        if not centrifuge_controller.connect():
+            logger.log(f"离心机连接失败: {centrifuge_controller.get_message()}", "ERROR")
+        if not oven_controller.connect():
+            logger.log(f"高温炉连接失败: {oven_controller.get_message()}", "ERROR")
+        if not door_controller.connect():
+            logger.log(f"玻璃门连接失败: {door_controller.get_message()}", "ERROR")
 
     initialize_oven_curve_db()
     yield  # 运行应用程序

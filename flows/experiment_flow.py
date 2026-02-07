@@ -27,6 +27,13 @@ from flows.thermal_flow import thermal_flow_mgr
 from flows.xrd_flow import xrd_flow_mgr
 from services.oven import oven_service
 
+try:
+    import config
+    _MOCK_DEVICES = getattr(config, "MOCK_DEVICES", False)
+    _MOCK_STEP_DELAY = getattr(config, "MOCK_STEP_DELAY", 1.0)
+except Exception:
+    _MOCK_DEVICES = False
+    _MOCK_STEP_DELAY = 1.0
 
 CONFIRM_TIMEOUT = 300  # 各阶段等待确认超时（秒）
 
@@ -115,11 +122,17 @@ class ExperimentOrchestrator:
 
     def _run_experiment(self, mixer_model: Any) -> None:
         """在后台线程中按状态机执行各阶段（配料 -> 熔封确认 -> 热处理 -> XRD确认 -> XRD测试）"""
+        mock = _MOCK_DEVICES
+        delay = _MOCK_STEP_DELAY
         try:
             # ---------- 1. 配料 ----------
-            self._set_phase(ExperimentPhase.MIXING, "配料流程启动")
-            logger.log("实验流程：开始配料", "INFO")
-            mix_result = mix_flow_mgr.run(mixer_model)
+            self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
+            logger.log("实验流程：开始配料" + (" [Mock 模式，不连接设备]" if mock else ""), "INFO")
+            if mock:
+                time.sleep(delay)
+                mix_result = {"status": True, "message": "mock 配料完成"}
+            else:
+                mix_result = mix_flow_mgr.run(mixer_model)
             if not mix_result.get("status"):
                 self._set_phase(
                     ExperimentPhase.ERROR,
@@ -151,8 +164,12 @@ class ExperimentOrchestrator:
             oven_id = int(params.get("oven_id", 1))
             qty = int(params.get("qty", 1))
             curve_points = self._resolve_thermal_curve_points()
-            self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中")
-            thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
+            self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中" + (" [Mock]" if mock else ""))
+            if mock:
+                time.sleep(delay)
+                thermal_result = {"status": True, "message": "mock 热处理完成"}
+            else:
+                thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
             if not thermal_result.get("status"):
                 self._set_phase(
                     ExperimentPhase.ERROR,
@@ -172,15 +189,19 @@ class ExperimentOrchestrator:
             logger.log("XRD上样已确认，开始XRD测试", "INFO")
 
             # ---------- 4. XRD 测试 ----------
-            self._set_phase(ExperimentPhase.XRD_RUNNING, "XRD测试执行中")
-            xrd_result = xrd_flow_mgr.run(
-                single=True,
-                sample_id="XY000",
-                start_theta=5.0,
-                end_theta=120.0,
-                increment=0.01,
-                exp_time=0.1,
-            )
+            self._set_phase(ExperimentPhase.XRD_RUNNING, "XRD测试执行中" + (" [Mock]" if mock else ""))
+            if mock:
+                time.sleep(delay)
+                xrd_result = {"status": True, "message": "mock XRD 完成"}
+            else:
+                xrd_result = xrd_flow_mgr.run(
+                    single=True,
+                    sample_id="XY000",
+                    start_theta=5.0,
+                    end_theta=120.0,
+                    increment=0.01,
+                    exp_time=0.1,
+                )
             if not (isinstance(xrd_result, dict) and xrd_result.get("status")):
                 msg = (
                     str(xrd_result)
