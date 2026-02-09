@@ -109,19 +109,19 @@ class ExperimentOrchestrator:
         out: Dict[str, Any] = {}
         if phase == ExperimentPhase.MIXING:
             try:
-                out["mix"] = mix_flow_mgr.get_summary()
+                out = mix_flow_mgr.get_summary()
             except Exception as e:
-                out["mix"] = {"status": False, "message": str(e), "summary": ""}
+                out = {"status": False, "message": str(e), "summary": ""}
         elif phase == ExperimentPhase.THERMAL_RUNNING:
             try:
-                out["thermal"] = thermal_flow_mgr.get_summary()
+                out = thermal_flow_mgr.get_summary()
             except Exception as e:
-                out["thermal"] = {"status": False, "message": str(e), "summary": ""}
+                out = {"status": False, "message": str(e), "summary": ""}
         elif phase in (ExperimentPhase.XRD_RUNNING, ExperimentPhase.COMPLETED, ExperimentPhase.ERROR):
             try:
-                out["xrd"] = xrd_flow_mgr.get_summary()
+                out = xrd_flow_mgr.get_summary()
             except Exception as e:
-                out["xrd"] = {"status": False, "message": str(e), "summary": ""}
+                out = {"status": False, "message": str(e), "summary": ""}
         # IDLE / WAITING_SEAL_CONFIRM / WAITING_THERMAL_LOAD / WAITING_XRD_READY 无当前子流程，返回空
         return out
 

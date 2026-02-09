@@ -390,6 +390,10 @@ class XRDController(BaseDevice):
 
     def get_running_status(self) -> dict:
         """获取设备状态"""
+
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+
         status_info = {
             "name": self.device_name,
             "connected": self.is_connected,

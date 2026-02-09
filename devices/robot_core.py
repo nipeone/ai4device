@@ -31,10 +31,7 @@ class RobotController(PLCControlledDevice):
          DB1.242 (系统状态) - 0=断线, 1=空闲, 2=执行中, 3=完成, 4=失败。
          DB2.40 (任务状态) - 0=无任务, 1=有任务。"""
         if not self.is_connected:
-            return {
-                "status": "error",
-                "message": "设备未连接"
-            }
+            return {"status": "error", "message": "设备未连接"}
         return {
             "status": "success",
             "data": PlcStatus(

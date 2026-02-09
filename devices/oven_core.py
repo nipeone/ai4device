@@ -398,6 +398,9 @@ class OvenController(SocketControlledDevice):
 
     def get_running_status(self) -> dict:
         """获取设备运行状态"""
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+
         realtime_map = self.get_realtime_data(duration=10.0)
         device_list = self.get_device_list()
         summary_result = []

@@ -448,6 +448,8 @@ class MixerController(RestAPIControlledDevice):
 
     def get_running_status(self) -> dict:
         """获取设备运行状态"""
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
 
         if not self.current_task_id:
             return {"status": "error", "message": "当前任务为空"}
