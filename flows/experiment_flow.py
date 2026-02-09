@@ -43,6 +43,122 @@ MOCK_STEP_DURATION_MIN = 20
 MOCK_STEP_DURATION_MAX = 30
 
 
+def _fake_mix_summary(step_info: str = "", task_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Mock 下配料子流程 get_summary 的假数据，与 mix_flow.get_summary() 及 mixer_controller.get_running_status() 结构一致。
+    真实返回：{"status": True, "summary": {"mixer": get_task_info(current_task_id)}}，mixer 为 {"status": "success", "data": GetTaskInfoResponse} 或 error。
+    task_name 应与实验外层 task_name 一致（来自启动时的配料任务名）。
+    """
+    return {
+        "status": True,
+        "summary": {
+            "mixer": {
+                "status": "success",
+                "data": {
+                    "task_id": 9001,
+                    "task_name": task_name or "Mock配料任务",
+                    "unit_save_json": "{}",
+                    "status": 1,
+                    "creator": "mock",
+                    "task_begin_time": None,
+                    "task_end_time": None,
+                    "created_at": 0,
+                    "updated_at": 0,
+                    "is_audit_log": 1,
+                    "task_template_id_list": [],
+                    "task_setup": {"subtype": None, "powder_100_30": False, "powder_30_100": False, "added_slots": ""},
+                    "unit_list": [],
+                },
+            },
+        },
+    }
+
+
+def _fake_thermal_summary(step_info: str = "") -> Dict[str, Any]:
+    """
+    Mock 下热处理子流程 get_summary 的假数据，与 thermal_flow.get_summary() 及各 device.get_running_status() 结构一致。
+    真实返回：{"status": True, "summary": {"robot": ..., "oven": ..., "centrifuge": ...}}。
+    """
+    return {
+        "status": True,
+        "summary": {
+            "robot": {
+                "status": "success",
+                "data": {
+                    "plc_connected": True,
+                    "m_signals": [False, False, False, False, False, True, False],
+                    "task_data": {"tid": 1, "st": 1, "qty": 1},
+                    "robot": {
+                        "home_status": True,
+                        "fixture_status": True,
+                        "system_status": 2,
+                        "robot_status": True,
+                        "task_status": 1,
+                    },
+                },
+            },
+            "oven": {
+                "status": "success",
+                "data": [
+                    {
+                        "设备名称": "炉1",
+                        "设备地址": 1,
+                        "仪表型号": "858P",
+                        "在线状态": "在线",
+                        "实际温度": 450.5,
+                        "设定温度": 500.0,
+                        "状态显示": "阶段2 剩余0.5h",
+                        "结束时间": "2025-02-09 15:30",
+                        "状态": "开始",
+                        "运行曲线": "Mock曲线",
+                    },
+                ],
+            },
+            "centrifuge": {
+                "status": "success",
+                "data": {
+                    "actual_rpm": 500,
+                    "centrifuge_force": 120,
+                    "run_time": 300,
+                    "fault_code": 0,
+                    "run_state": 2,
+                    "door_window": 2,
+                    "setted_rpm": 500,
+                    "setted_time": 10,
+                    "door_lid": 2,
+                    "rotor_state": 2,
+                    "remain_time": 180,
+                },
+            },
+        },
+    }
+
+
+def _fake_xrd_summary(step_info: str = "") -> Dict[str, Any]:
+    """
+    Mock 下 XRD 子流程 get_summary 的假数据，与 xrd_flow.get_summary() 及 xrd_controller.get_running_status() 结构一致。
+    真实返回：{"status": True, "summary": {"xrd": status_info}}，status_info 含 name, connected, host, port, status, xray_status, power_status 等。
+    """
+    return {
+        "status": True,
+        "summary": {
+            "xrd": {
+                "name": "XRD衍射仪",
+                "connected": True,
+                "host": "192.168.1.100",
+                "port": 8000,
+                "status": "running",
+                "xray_status": True,
+                "power_status": True,
+                "current_voltage": 45.0,
+                "current_current": 40.0,
+                "untest_station": [],
+                "ready_station": ["1"],
+            },
+        },
+    }
+
+
 class ExperimentOrchestrator:
     """
     实验总流程状态机与编排器。
@@ -104,24 +220,38 @@ class ExperimentOrchestrator:
         获取当前阶段对应的子流程输出摘要，供用户查看。
         仅输出当前阶段所属子流程的 summary：mixing 只输出 mix，thermal 只输出 thermal，xrd 只输出 xrd；
         等待确认等阶段无对应子流程时返回空。
+        Mock 模式下返回与真实设备一致的假数据结构，便于前端调试 UI。
         """
         phase = self._phase
         out: Dict[str, Any] = {}
+        step_info = self._get_step_info_from_flows()
+
         if phase == ExperimentPhase.MIXING:
-            try:
-                out = mix_flow_mgr.get_summary()
-            except Exception as e:
-                out = {"status": False, "message": str(e), "summary": ""}
+            if _MOCK_DEVICES:
+                with self._lock:
+                    task_name = self._task_name
+                out = _fake_mix_summary(step_info, task_name=task_name)
+            else:
+                try:
+                    out = mix_flow_mgr.get_summary()
+                except Exception as e:
+                    out = {"status": False, "message": str(e), "summary": {}}
         elif phase == ExperimentPhase.THERMAL_RUNNING:
-            try:
-                out = thermal_flow_mgr.get_summary()
-            except Exception as e:
-                out = {"status": False, "message": str(e), "summary": ""}
+            if _MOCK_DEVICES:
+                out = _fake_thermal_summary(step_info)
+            else:
+                try:
+                    out = thermal_flow_mgr.get_summary()
+                except Exception as e:
+                    out = {"status": False, "message": str(e), "summary": {}}
         elif phase in (ExperimentPhase.XRD_RUNNING, ExperimentPhase.COMPLETED, ExperimentPhase.ERROR):
-            try:
-                out = xrd_flow_mgr.get_summary()
-            except Exception as e:
-                out = {"status": False, "message": str(e), "summary": ""}
+            if _MOCK_DEVICES:
+                out = _fake_xrd_summary(step_info)
+            else:
+                try:
+                    out = xrd_flow_mgr.get_summary()
+                except Exception as e:
+                    out = {"status": False, "message": str(e), "summary": {}}
         # IDLE / WAITING_SEAL_CONFIRM / WAITING_THERMAL_LOAD / WAITING_XRD_READY 无当前子流程，返回空
         return out
 
