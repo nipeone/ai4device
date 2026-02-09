@@ -11,7 +11,8 @@
 """
 from typing import Optional
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile
+from fastapi.responses import JSONResponse
 
 from flows.experiment_flow import experiment_orchestrator
 from services.mixer import mixer_service
@@ -54,7 +55,17 @@ async def start_experiment(body: StartExperimentRequest):
         result = experiment_orchestrator.start(add_task, thermal_params=thermal_params)
         return result
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        st = experiment_orchestrator.get_status()
+        return JSONResponse(
+            status_code=409,
+            content={
+                "status": "error",
+                "message": str(e),
+                "experiment_id": st.experiment_id,
+                "phase": st.phase.value,
+                "phase_label": st.phase_label,
+            },
+        )
 
 
 @router.post("/flux/from_excel", tags=["实验"])
@@ -72,7 +83,17 @@ async def start_experiment_from_excel(file: UploadFile = File(...)):
         result = experiment_orchestrator.start(mixer_model)
         return result
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        st = experiment_orchestrator.get_status()
+        return JSONResponse(
+            status_code=409,
+            content={
+                "status": "error",
+                "message": str(e),
+                "experiment_id": st.experiment_id,
+                "phase": st.phase.value,
+                "phase_label": st.phase_label,
+            },
+        )
 
 
 @router.get("/status", response_model=ExperimentStatusResponse, tags=["实验"])
@@ -89,7 +110,7 @@ def get_experiment_status():
 def confirm_flux_seal():
     """人工或 Agent 确认熔封已完成，流程将继续到「等待加热炉上料」阶段。"""
     experiment_orchestrator.confirm_seal()
-    return {"msg": "熔封确认已接收，流程继续"}
+    return {"message": "熔封确认已接收，流程继续"}
 
 
 @router.post("/flux/confirm_thermal_load", tags=["实验"])
@@ -106,14 +127,14 @@ def confirm_thermal_load(body: Optional[ThermalParamsRequest] = None):
         )
     else:
         experiment_orchestrator.confirm_thermal_load()
-    return {"msg": "上料确认已接收，开始热处理"}
+    return {"message": "上料确认已接收，开始热处理"}
 
 
 @router.post("/flux/confirm_xrd_ready", tags=["实验"])
 def confirm_xrd_ready():
     """确认样品已放入 XRD 试验台，流程将开始 XRD 测试。"""
     experiment_orchestrator.confirm_xrd_ready()
-    return {"msg": "XRD上样确认已接收，开始XRD测试"}
+    return {"message": "XRD上样确认已接收，开始XRD测试"}
 
 
 @router.post("/stop", tags=["实验"])
@@ -124,4 +145,4 @@ def stop_experiment():
     返回已是否成功发出停止请求（无实验在跑时返回 false）。
     """
     ok = experiment_orchestrator.stop()
-    return {"stopped": ok, "msg": "已请求停止实验" if ok else "当前无实验在运行"}
+    return {"stopped": ok, "message": "已请求停止实验" if ok else "当前无实验在运行"}

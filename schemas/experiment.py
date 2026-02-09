@@ -56,6 +56,15 @@ class ExperimentStatusResponse(BaseModel):
     result: Optional[XRDResultData] = Field(default=None, description="实验完成时的XRD结果（2theta、intensity），仅 phase=completed 时有值")
 
 
+class StartExperimentResponse(BaseModel):
+    """启动实验接口统一返回结构（成功与冲突时字段一致）"""
+    status: str = Field(..., description="started | error")
+    message: str = Field(..., description="说明信息")
+    experiment_id: str = Field(..., description="当前实验ID（冲突时为正在运行的实验ID）")
+    phase: str = Field(..., description="当前阶段枚举值")
+    phase_label: str = Field(..., description="阶段说明")
+
+
 class ThermalParamsRequest(BaseModel):
     """热处理启动参数（在确认“样品已放入加热炉”时可选传入）"""
     oven_id: int = Field(default=1, description="炉子ID")
