@@ -37,7 +37,7 @@ except Exception:
     _MOCK_DEVICES = False
     _MOCK_STEP_DELAY = 1.0
 
-CONFIRM_TIMEOUT = 300  # 各阶段等待确认超时（秒）
+CONFIRM_TIMEOUT = 600  # 各阶段等待确认超时（秒）
 # Mock 时每个子流程（配料/热处理/XRD）模拟执行时长范围（秒），便于感知流程是否都执行过
 MOCK_STEP_DURATION_MIN = 20
 MOCK_STEP_DURATION_MAX = 30
