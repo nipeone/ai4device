@@ -9,15 +9,15 @@ from pydantic import BaseModel, Field
 
 class ExperimentPhase(str, Enum):
     """实验总流程阶段（与可中断/恢复节点对应）"""
-    IDLE = "idle"
-    MIXING = "mixing"                          # 配料中
+    IDLE = "idle"                                   # 空闲，可启动实验
+    MIXING = "mixing"                               # 配料中
     WAITING_SEAL_CONFIRM = "waiting_seal_confirm"   # 等待熔封完成确认
     WAITING_THERMAL_LOAD = "waiting_thermal_load"   # 等待人工将样品放入加热炉后确认
-    THERMAL_RUNNING = "thermal_running"        # 热处理（加热炉+离心机）执行中
-    WAITING_XRD_READY = "waiting_xrd_ready"    # 等待人工将样品放入XRD试验台后确认
-    XRD_RUNNING = "xrd_running"               # XRD测试执行中
-    COMPLETED = "completed"
-    ERROR = "error"
+    THERMAL_RUNNING = "thermal_running"             # 热处理（加热炉+离心机）执行中
+    WAITING_XRD_READY = "waiting_xrd_ready"         # 等待人工将样品放入XRD试验台后确认
+    XRD_RUNNING = "xrd_running"                     # XRD测试执行中
+    COMPLETED = "completed"                         # 实验已完成
+    ERROR = "error"                                 # 实验异常结束
 
 
 # 阶段说明（供 Agent 理解当前状态与下一步动作）

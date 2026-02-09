@@ -11,7 +11,7 @@
 """
 from typing import Optional
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 
 from flows.experiment_flow import experiment_orchestrator
@@ -74,7 +74,7 @@ async def start_experiment_from_excel(file: UploadFile = File(...)):
     兼容旧版：上传 Excel 启动实验，仅解析配料任务；温度曲线由 confirm_thermal_load 传入曲线名或使用默认。
     """
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
-        raise HTTPException(status_code=400, detail="只支持上传 Excel 文件(.xlsx, .xls)")
+        raise HTTPException(status_code=400, content={"status": "error", "message": "只支持上传 Excel 文件(.xlsx, .xls)"})
 
     contents = await file.read()
     mixer_model = await mixer_service.parse_mixer_tasks_from_excel(contents)
