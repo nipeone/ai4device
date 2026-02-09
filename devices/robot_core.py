@@ -16,6 +16,9 @@ class RobotController(PLCControlledDevice):
         super().__init__("plc_robot_arm_" + device_id, device_id, plc_ip, plc_port)
 
     def get_status(self) -> dict:
+        return self.status
+
+    def get_running_status(self) -> dict:
         """获取 PLC 连接及机器人状态。
         第 1 个值 (Index 0): 对应 M10.0 (任务下发) -> false (未触发)。
         第 2 个值 (Index 1): 对应 M10.1 (任务清除) -> false。

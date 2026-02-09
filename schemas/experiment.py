@@ -51,6 +51,10 @@ class ExperimentStatusResponse(BaseModel):
     pending_action: str = Field(default="", description="建议的下一步操作说明")
     step_info: str = Field(default="", description="当前子流程步骤描述（如热处理/XRD内部步骤）")
     sub_flow: Optional[str] = Field(default=None, description="当前活跃子流程: mix | thermal | xrd")
+    sub_flow_summaries: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="当前阶段对应子流程的输出摘要：mixing 时仅含 mix，thermal_running 时仅含 thermal，xrd_running/completed/error 时仅含 xrd；等待确认阶段为空",
+    )
     error_message: Optional[str] = Field(default=None, description="若 phase=error 时的错误信息")
     task_name: Optional[str] = Field(default=None, description="配料任务名称（如有）")
     result: Optional[XRDResultData] = Field(default=None, description="实验完成时的XRD结果（2theta、intensity），仅 phase=completed 时有值")

@@ -27,7 +27,7 @@ def get_plc_status():
          DB1.242 (系统状态) - 0=断线, 1=空闲, 2=执行中, 3=完成, 4=失败
          DB2.40 (任务状态) - 0=无任务, 1=有任务"""
     # 注意：此处不频繁调用 log，避免日志刷屏，仅在连接状态变化时由 connect 记录
-    result = robot_controller.get_status()
+    result = robot_controller.get_running_status()
     if result.get("status") == "success":
         return PlcStatusResponse(code=200, message="PLC状态获取成功", data=result.get("data"))
     else:

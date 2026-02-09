@@ -145,4 +145,15 @@ class MixFlowManager:
         finally:
             self.running = False
 
+    def get_summary(self) -> dict:
+        """获取配料流程总结"""
+
+        mixer_summary = mixer_controller.get_running_status()
+        return {
+            "status": True,
+            "summary": {
+                "mixer": mixer_summary
+            }
+        }
+
 mix_flow_mgr = MixFlowManager(mixer_controller)

@@ -586,4 +586,14 @@ class XRDFlowManager:
             raise Exception("尚未实现多样品模式")
             # self.run_multi_sample_test()
 
+    def get_summary(self) -> dict:
+        """获取XRD流程总结"""
+        xrd_summary = xrd_controller.get_running_status()
+        return {
+            "status": True,
+            "summary": {
+                "xrd": xrd_summary
+            }
+        }
+
 xrd_flow_mgr = XRDFlowManager(xrd_controller)

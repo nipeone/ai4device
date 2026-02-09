@@ -99,6 +99,32 @@ class ExperimentOrchestrator:
             return getattr(xrd_flow_mgr, "current_step_info", "") or "XRD测试中"
         return self._step_info
 
+    def _get_sub_flow_summaries(self) -> Dict[str, Any]:
+        """
+        获取当前阶段对应的子流程输出摘要，供用户查看。
+        仅输出当前阶段所属子流程的 summary：mixing 只输出 mix，thermal 只输出 thermal，xrd 只输出 xrd；
+        等待确认等阶段无对应子流程时返回空。
+        """
+        phase = self._phase
+        out: Dict[str, Any] = {}
+        if phase == ExperimentPhase.MIXING:
+            try:
+                out["mix"] = mix_flow_mgr.get_summary()
+            except Exception as e:
+                out["mix"] = {"status": False, "message": str(e), "summary": ""}
+        elif phase == ExperimentPhase.THERMAL_RUNNING:
+            try:
+                out["thermal"] = thermal_flow_mgr.get_summary()
+            except Exception as e:
+                out["thermal"] = {"status": False, "message": str(e), "summary": ""}
+        elif phase in (ExperimentPhase.XRD_RUNNING, ExperimentPhase.COMPLETED, ExperimentPhase.ERROR):
+            try:
+                out["xrd"] = xrd_flow_mgr.get_summary()
+            except Exception as e:
+                out["xrd"] = {"status": False, "message": str(e), "summary": ""}
+        # IDLE / WAITING_SEAL_CONFIRM / WAITING_THERMAL_LOAD / WAITING_XRD_READY 无当前子流程，返回空
+        return out
+
     def _resolve_thermal_curve_points(self) -> list:
         """根据当前 thermal_params 解析曲线点：优先 curve_points，其次 curve_name，最后默认"""
         params = self._thermal_params or {}
@@ -363,6 +389,7 @@ class ExperimentOrchestrator:
             error_message = self._error_message
             last_result = self._last_result
         step_info = self._get_step_info_from_flows()
+        sub_flow_summaries = self._get_sub_flow_summaries()
 
         is_paused = phase in (
             ExperimentPhase.WAITING_SEAL_CONFIRM,
@@ -392,6 +419,7 @@ class ExperimentOrchestrator:
             pending_action=pending_action,
             step_info=step_info,
             sub_flow=sub_flow,
+            sub_flow_summaries=sub_flow_summaries if sub_flow_summaries else None,
             error_message=error_message,
             task_name=task_name,
             result=result,

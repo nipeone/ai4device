@@ -388,6 +388,32 @@ class XRDController(BaseDevice):
         
         return status_info
 
+    def get_running_status(self) -> dict:
+        """获取设备状态"""
+        status_info = {
+            "name": self.device_name,
+            "connected": self.is_connected,
+            "host": self.host,
+            "port": self.port,
+            "status": self.status.value if self.status else "unknown"
+        }
+        
+        # 如果已连接，获取详细状态
+        if self.is_connected:
+            sample_status = self.get_sample_status()
+            if sample_status.get("status") and "Station" in sample_status:
+                station = sample_status["Station"]
+                status_info.update({
+                    "xray_status": station.get("xray status", False),
+                    "power_status": station.get("power status", False),
+                    "current_voltage": station.get("current voltage", 0.0),
+                    "current_current": station.get("current current", 0.0),
+                    "untest_station": station.get("untest station", []),
+                    "ready_station": station.get("ready station", [])
+                })
+        
+        return status_info
+
     def get_result(self) -> dict:
         """获取设备结果"""
         return self.result if self.result else {
@@ -398,7 +424,6 @@ class XRDController(BaseDevice):
     def get_message(self) -> str:
         """获取设备消息"""
         return self.message if self.message else "XRD衍射仪设备就绪"
-
 
 # 创建全局实例（保持向后兼容）
 xrd_controller = XRDController()

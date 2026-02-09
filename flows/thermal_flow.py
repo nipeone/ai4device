@@ -1242,6 +1242,22 @@ class ThermalFlowManager:
         finally:
             self.running = False
 
+    def get_summary(self) -> dict:
+        """获取热处理流程总结"""
+
+        robot_summary = robot_controller.get_running_status()
+        oven_summary = oven_controller.get_running_status()
+        centrifuge_summary = centrifuge_controller.get_running_status()
+
+        return {
+            "status": True,
+            "summary": {
+                "robot": robot_summary,
+                "oven": oven_summary,
+                "centrifuge": centrifuge_summary
+            }
+        }
+
 from devices.robot_core import robot_controller
 from devices.door_core import door_controller
 from devices.centrifuge_core import centrifuge_controller
