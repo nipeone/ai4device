@@ -3,6 +3,7 @@ import io
 from typing import Any, List
 import uuid
 from datetime import datetime
+import re
 from schemas.mixer import AddTaskRequest, TaskSetup, LayoutListItem, ProcessJson
 
 class MixerService:
@@ -37,39 +38,59 @@ class MixerService:
         
         # 解析布局列表
         layout_list: List[LayoutListItem] = []
-        for index, row in df.iterrows():
-            if index == 0:  # 跳过标题行或任务基本信息行
-                continue
+        unit_id_base = int(datetime.now().timestamp()*1000)
+        # row_idx 对应 JSON 中的 unit_column (第几组实验)
+        for row_idx, row in df.iterrows():
+
+            element_count = 0 # 记录当前实验组是第几个元素，用于计算 unit_row
                 
-            # 解析工艺JSON
-            process_json = ProcessJson(**{
-                "resource_type": row.get('resource_type', 'CC10R10C'),
-                "substance": row.get('substance', ''),
-                "chemical_id": int(row.get('chemical_id', 0)),
-                "SSSI": row.get('SSSI', ''),
-                "add_weight": int(row.get('add_weight', 0)),
-                "offset": int(row.get('offset', 0)),
-                "custom": {
-                    "unit": row.get('unit', ''),
-                    "unitOptions": [row.get('unit', '')]  # 示例
-                }
-            })
+            # 遍历当前行的所有列
+            for col_idx in range(0, len(df.columns), 2):
+                sssi_raw = str(row.iloc[col_idx]).strip()
+
+                # 过滤空单元格
+                if not sssi_raw or sssi_raw == 'nan' or sssi_raw == '':
+                    continue
+
+                weight = row.iloc[col_idx + 1]
+                if pd.isna(weight): weight = 0
+
+                # 解析 【SSSI】名称
+                match = re.search(r'【(.*?)】(.*)', sssi_raw)
+                sssi_code = match.group(1) if match else sssi_raw
+                substance = match.group(2) if match else ""
+
+                # --- 核心坐标逻辑变更 ---
+                unit_column = row_idx      # Excel 的行，变成托盘的列
+                unit_row = element_count    # 该行的第几个元素，变成托盘的行
+                # -----------------------
+
+                # 解析工艺JSON
+                process_json = ProcessJson(**{
+                    "resource_type": "CC10R10C",
+                    "substance": substance,
+                    "SSSI": sssi_code,
+                    "add_weight": float(weight),
+                    "offset": 0.3,
+                    "custom": {"unit": "mg","unitOptions": ["mg", "g"]}
+                })
             
-            layout_item = LayoutListItem(**{
-                "layout_code": row.get('layout_code', ''),
-                "src_layout_code": row.get('src_layout_code', ''),
-                "resource_type": row.get('resource_type', 'CC10R10C'),
-                "tray_QR_code": row.get('tray_QR_code', ''),
-                "status": int(row.get('status', 0)),
-                "QR_code": row.get('QR_code', ''),
-                "unit_type": row.get('unit_type', 'exp_add_powder'),
-                "unit_column": int(row.get('unit_column', 0)),
-                "unit_row": int(row.get('unit_row', 0)),
-                "unit_id": row.get('unit_id', ''),
-                "process_json": process_json
-            })
-            
-            layout_list.append(layout_item)
+                layout_item = LayoutListItem(**{
+                    "layout_code": "",
+                    "src_layout_code": "",
+                    "resource_type": "CC10R10C",
+                    "tray_QR_code": "",
+                    "status": 0,
+                    "QR_code": "",
+                    "unit_type": "exp_add_powder",
+                    "unit_column": unit_column,
+                    "unit_row": unit_row,
+                    "unit_id": f"unit-{hex(unit_id_base+row_idx)[2:]}",
+                    "process_json": process_json
+                })
+                
+                layout_list.append(layout_item)
+                element_count += 1 # 准备下一个元素的行号
         
         # 创建MixerModel对象
         mixer_model = AddTaskRequest(
