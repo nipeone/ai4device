@@ -34,8 +34,9 @@ async def start_experiment(body: StartExperimentRequest):
     使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
 
     从 body 中提取：
-    - 工艺配方.原料 -> 配料任务 AddTaskRequest（每个原料对应一个 LayoutListItem）
-    - 温度程序 -> 加热炉曲线 List[CurvePoint]（升温/保温/降温段，时间单位为小时）
+    - 推荐实验方案列表[方案索引].工艺参数.原料信息、原料标准化 -> 配料任务 AddTaskRequest
+    - 推荐实验方案列表[方案索引].工艺参数.温度程序 -> 加热炉曲线 List[CurvePoint]（时间单位：小时）
+    可选 方案索引（默认 0）指定运行第几个方案。
 
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     返回 experiment_id 与当前 phase，可通过 GET /api/experiment/status 查询进度。
