@@ -1,0 +1,735 @@
+## 试验调用API
+
+### 启动试验
+- url
+  /api/experiment/flux
+- method
+  post
+- body
+```json
+{
+    "目标材料": {
+      "化学式": "AlInSe3",
+      "结构原型": "Chalcopyrite-type",
+      "是否二维": false,
+      "是否半导体": true,
+      "材料族系": []
+    },
+    "推荐实验方案列表": [
+      {
+        "方案ID": "方案_A",
+        "方案类型": "baseline",
+        "方案给人的一句话说明": "中规中矩方案：基于统计窗口的推荐值，平衡了生长时间与晶体质量，适合首轮探索。",
+        "工艺参数": {
+          "原料信息": "Al, In, Se (按化学计量比 1:1:3)",
+          "原料标准化": "Al:In:Se=1:1:3",
+          "助熔剂信息": "Na 助熔剂",
+          "助熔剂标准化": "Na:(Al+In+Se)=2.7:1",
+          "容器": "Alumina crucible",
+          "籽晶": "Not specified",
+          "温度程序": {
+            "是否存在次高温预反应段": "否",
+            "升温到次高温时间_h": 11.5,
+            "次高温段温度_摄氏": 600.0,
+            "次高温段保温时间_h": 2.0,
+            "升温到最高温时间_h": 1.0,
+            "最高温段保温温度_摄氏": 870.0,
+            "最高温段保温时间_h": 24.0,
+            "降温速率_主降温_℃每小时": 1.8,
+            "降温时间_主降温_h": 150.0,
+            "低温段保温温度_摄氏": 600.0,
+            "低温段保温时间_h": 0.0,
+            "冷却速率_至室温_标签": "炉冷"
+          },
+          "分离与后处理": {
+            "分离方式": "Dissolution in ethanol and water",
+            "分离温度_摄氏": 25.0,
+            "晶体的进一步处理": "Washing with ethanol and water, dried at 65°C"
+          }
+        },
+        "预期结果标签": {
+          "预期晶体尺寸": "mm 级",
+          "预期风险水平": "低",
+          "风险来源简述": [
+            "参数接近统计均值，风险可控。",
+            "降温速率适中，不易产生热应力开裂。"
+          ]
+        },
+        "溯源信息": {
+          "主要参考配方ID": [
+            "rec_0282",
+            "rec_0322"
+          ],
+          "参考材料ID-化学式": [
+            "mat_273-ZnSiP2",
+            "mat_315-ZnSnP2"
+          ],
+          "参考方案类型ID-名称": [
+            "scheme_001-高助熔剂稀释慢冷方案"
+          ]
+        }
+      },
+      {
+        "方案ID": "方案_B",
+        "方案类型": "高助熔剂稀释慢冷方案",
+        "方案给人的一句话说明": "大尺寸优化方案：高助熔剂比例配合慢速降温，旨在获得大尺寸、低缺陷的单晶。",
+        "工艺参数": {
+          "原料信息": "Al, In, Se (按化学计量比 1:1:3)",
+          "原料标准化": "Al:In:Se=1:1:3",
+          "助熔剂信息": "Na 助熔剂 (高比例稀释)",
+          "助熔剂标准化": "Na:(Al+In+Se)=10.0:1",
+          "容器": "Alumina crucible",
+          "籽晶": "Not specified",
+          "温度程序": {
+            "是否存在次高温预反应段": "否",
+            "升温到次高温时间_h": 10.0,
+            "次高温段温度_摄氏": 600.0,
+            "次高温段保温时间_h": 2.0,
+            "升温到最高温时间_h": 2.0,
+            "最高温段保温温度_摄氏": 900.0,
+            "最高温段保温时间_h": 24.0,
+            "降温速率_主降温_℃每小时": 2.0,
+            "降温时间_主降温_h": 150.0,
+            "低温段保温温度_摄氏": 600.0,
+            "低温段保温时间_h": 0.0,
+            "冷却速率_至室温_标签": "炉冷"
+          },
+          "分离与后处理": {
+            "分离方式": "Dissolution in ethanol and water",
+            "分离温度_摄氏": 25.0,
+            "晶体的进一步处理": "Washing with ethanol and water, dried at 65°C"
+          }
+        },
+        "预期结果标签": {
+          "预期晶体尺寸": "cm 级 (大尺寸)",
+          "预期风险水平": "中等",
+          "风险来源简述": [
+            "高助熔剂比例可能降低产率。",
+            "实验时长较长，需严格控制气氛防止挥发。"
+          ]
+        },
+        "溯源信息": {
+          "主要参考配方ID": [
+            "rec_0282",
+            "rec_0026"
+          ],
+          "参考材料ID-化学式": [
+            "mat_273-ZnSiP2",
+            "mat_022-FeBO3"
+          ],
+          "参考方案类型ID-名称": [
+            "scheme_001-高助熔剂稀释慢冷方案"
+          ]
+        }
+      },
+      {
+        "方案ID": "方案_C",
+        "方案类型": "高温长保温溶解法方案",
+        "方案给人的一句话说明": "高温均匀化方案：在接近极限温度下长时保温，促进溶质充分扩散，随后快速冷却获取晶体。",
+        "工艺参数": {
+          "原料信息": "Al, In, Se (按化学计量比 1:1:3)",
+          "原料标准化": "Al:In:Se=1:1:3",
+          "助熔剂信息": "Na 助熔剂",
+          "助熔剂标准化": "Na:(Al+In+Se)=2.7:1",
+          "容器": "Platinum crucible",
+          "籽晶": "Not specified",
+          "温度程序": {
+            "是否存在次高温预反应段": "否",
+            "升温到次高温时间_h": 10.0,
+            "次高温段温度_摄氏": 600.0,
+            "次高温段保温时间_h": 2.0,
+            "升温到最高温时间_h": 2.0,
+            "最高温段保温温度_摄氏": 980.0,
+            "最高温段保温时间_h": 100.0,
+            "降温速率_主降温_℃每小时": 5.0,
+            "降温时间_主降温_h": 10.0,
+            "低温段保温温度_摄氏": 600.0,
+            "低温段保温时间_h": 0.0,
+            "冷却速率_至室温_标签": "快冷"
+          }
+        },
+        "预期结果标签": {
+          "预期晶体尺寸": "mm 级",
+          "预期风险水平": "中等偏高",
+          "风险来源简述": [
+            "温度接近实验室上限 (1000℃)，对设备要求高。",
+            "长时保温可能加剧组分挥发或坩埚反应。"
+          ]
+        },
+        "溯源信息": {
+          "主要参考配方ID": [
+            "rec_0001",
+            "rec_0698"
+          ],
+          "参考材料ID-化学式": [
+            "mat_001-GaN",
+            "mat_689-PtSb2"
+          ],
+          "参考方案类型ID-名称": [
+            "scheme_002-高温长保温溶解法方案"
+          ]
+        }
+      },
+      {
+        "方案ID": "方案_D",
+        "方案类型": "低助熔剂比例极慢冷方案",
+        "方案给人的一句话说明": "高纯度方案：低助熔剂比例减少杂质引入，极慢冷保证晶体结晶质量，适合获取高完整性小单晶。",
+        "工艺参数": {
+          "原料信息": "Al, In, Se (按化学计量比 1:1:3)",
+          "原料标准化": "Al:In:Se=1:1:3",
+          "助熔剂信息": "Na 助熔剂 (低比例)",
+          "助熔剂标准化": "Na:(Al+In+Se)=1.5:1",
+          "容器": "Alumina crucible",
+          "籽晶": "Not specified",
+          "温度程序": {
+            "是否存在次高温预反应段": "否",
+            "升温到次高温时间_h": 10.0,
+            "次高温段温度_摄氏": 600.0,
+            "次高温段保温时间_h": 2.0,
+            "升温到最高温时间_h": 2.0,
+            "最高温段保温温度_摄氏": 950.0,
+            "最高温段保温时间_h": 10.0,
+            "降温速率_主降温_℃每小时": 0.6,
+            "降温时间_主降温_h": 166.0,
+            "低温段保温温度_摄氏": 850.0,
+            "低温段保温时间_h": 0.0,
+            "冷却速率_至室温_标签": "炉冷"
+          },
+          "分离与后处理": {
+            "分离方式": "Dissolution in ethanol and water",
+            "分离温度_摄氏": 25.0,
+            "晶体的进一步处理": "Washing with ethanol and water, dried at 65°C"
+          }
+        },
+        "预期结果标签": {
+          "预期晶体尺寸": "mm 级",
+          "预期风险水平": "中等",
+          "风险来源简述": [
+            "低助熔剂比例可能导致成核密度高，尺寸受限。",
+            "极慢冷导致实验周期长，能耗高。"
+          ]
+        },
+        "溯源信息": {
+          "主要参考配方ID": [
+            "rec_0016",
+            "rec_0121"
+          ],
+          "参考材料ID-化学式": [
+            "mat_013-Ni3V2O8",
+            "mat_114-B12As2"
+          ],
+          "参考方案类型ID-名称": [
+            "scheme_003-低助熔剂比例极慢冷方案"
+          ]
+        }
+      },
+      {
+        "方案ID": "方案_E",
+        "方案类型": "酸溶/化学蚀刻分离方案",
+        "方案给人的一句话说明": "易分离方案：使用碱金属卤化物助熔剂，生长后通过酸溶轻松去除助熔剂，获取洁净晶体。",
+        "工艺参数": {
+          "原料信息": "Al, In, Se (按化学计量比 1:1:3)",
+          "原料标准化": "Al:In:Se=1:1:3",
+          "助熔剂信息": "NaCl-KCl 混合助熔剂",
+          "助熔剂标准化": "NaCl:(Al+In+Se)=5.0:1",
+          "容器": "Alumina crucible",
+          "籽晶": "Not specified",
+          "温度程序": {
+            "是否存在次高温预反应段": "否",
+            "升温到次高温时间_h": 10.0,
+            "次高温段温度_摄氏": 600.0,
+            "次高温段保温时间_h": 2.0,
+            "升温到最高温时间_h": 2.0,
+            "最高温段保温温度_摄氏": 850.0,
+            "最高温段保温时间_h": 24.0,
+            "降温速率_主降温_℃每小时": 2.5,
+            "降温时间_主降温_h": 140.0,
+            "低温段保温温度_摄氏": 500.0,
+            "低温段保温时间_h": 0.0,
+            "冷却速率_至室温_标签": "炉冷"
+          },
+          "分离与后处理": {
+            "分离方式": "Dissolution in water (or dilute HCl)",
+            "分离温度_摄氏": 60.0,
+            "晶体的进一步处理": "Washing with distilled water, sonication if needed"
+          }
+        },
+        "预期结果标签": {
+          "预期晶体尺寸": "mm 级",
+          "预期风险水平": "低",
+          "风险来源简述": [
+            "水溶性助熔剂分离简便，对晶体损伤小。",
+            "需注意晶体是否耐酸/水腐蚀。"
+          ]
+        },
+        "溯源信息": {
+          "主要参考配方ID": [
+            "rec_0322",
+            "rec_0074"
+          ],
+          "参考材料ID-化学式": [
+            "mat_315-ZnSnP2",
+            "mat_070-Ge doped Yb14MnSb11"
+          ],
+          "参考方案类型ID-名称": [
+            "scheme_005-酸溶/化学蚀刻分离方案"
+          ]
+        }
+      }
+    ],
+    "整体备注": [
+      "所有方案均满足实验室温度与降温速率约束，具体配比仍需根据目标化学式微调。",
+      "建议先从方案 A + 方案 B 起步，根据首轮晶体尺寸和副相情况再收缩窗口。",
+      "AlInSe3 含有挥发性元素 Se，建议在密封容器（如石英管封装后放入坩埚）或惰性气氛保护下进行，尽管参数表中未强制提及，但这是硒化物生长的通用安全准则。"
+    ]
+  }
+```
+- response
+```json
+{
+    "status": "started",
+    "message": "实验已启动，可通过 GET /api/experiment/status 查询进度",
+    "experiment_id": "24cc7e85-0ea5-45d5-bc04-07ed264821b1",
+    "phase": "mixing",
+    "phase_label": "配料进行中"
+}
+```
+
+### 停止试验
+- url
+  /api/experiment/stop
+- method
+  post
+- body
+  空
+- response
+```json
+{
+    "stopped": true,
+    "message": "已请求停止实验"
+}
+```
+
+### 获取试验状态
+- url
+  /api/experiment/status
+- method
+  post
+- body
+  空
+- response
+  1. phase=mixing //配料中
+  ```json
+  {
+      "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+      "phase": "mixing",
+      "phase_label": "配料进行中",
+      "is_paused": false,
+      "pending_action": "",
+      "step_info": "配料流程启动 [Mock]",
+      "sub_flow": "mix",
+      "sub_flow_summaries": {
+          "status": true,
+          "summary": {
+              "mixer": {
+                  "status": "success",
+                  "data": {
+                      "task_id": 9001,
+                      "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+                      "unit_save_json": "{}",
+                      "status": 1,
+                      "creator": "mock",
+                      "task_begin_time": 1772262505.8052256,
+                      "task_end_time": null,
+                      "created_at": 0,
+                      "updated_at": 0,
+                      "is_audit_log": 1,
+                      "task_template_id_list": [],
+                      "task_setup": {
+                          "subtype": null,
+                          "powder_100_30": false,
+                          "powder_30_100": false,
+                          "added_slots": ""
+                      },
+                      "unit_list": []
+                  }
+              }
+          }
+      },
+      "error_message": null,
+      "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+      "result": null,
+      "results": null
+  }
+  ```
+  2. phase=waiting_seal_confirm //等待熔封完成确认
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "waiting_seal_confirm",
+    "phase_label": "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
+    "is_paused": true,
+    "pending_action": "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
+    "step_info": "配料已完成，等待熔封确认",
+    "sub_flow": null,
+    "sub_flow_summaries": null,
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+    "result": null,
+    "results": null
+  }
+  ```
+  3. phase=loading //上料中
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "loading",
+    "phase_label": "上料进行中",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "上料流程启动 [Mock]",
+    "sub_flow": "load",
+    "sub_flow_summaries": null,
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281546_d6b258c1",
+    "result": null,
+    "results": null
+  }
+  ```
+  4. phase=waiting_thermal_load //等待加热炉上料确认
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "waiting_thermal_load",
+    "phase_label": "等待上料完成：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
+    "is_paused": true,
+    "pending_action": "等待上料完成：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
+    "step_info": "请将样品放入加热炉后调用 confirm_thermal_load",
+    "sub_flow": null,
+    "sub_flow_summaries": null,
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+    "result": null,
+    "results": null
+  }
+  ```
+  5. phase=thermal_running //热处理（加热炉+离心机）执行中
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "thermal_running",
+    "phase_label": "热处理进行中（加热炉与离心机）",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "热处理执行中 [Mock]",
+    "sub_flow": "thermal",
+    "sub_flow_summaries": {
+        "status": true,
+        "summary": {
+            "robot": {
+                "status": "success",
+                "data": {
+                    "plc_connected": true,
+                    "m_signals": [
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        true,
+                        false
+                    ],
+                    "task_data": {
+                        "tid": 1,
+                        "st": 1,
+                        "qty": 1
+                    },
+                    "robot": {
+                        "home_status": true,
+                        "fixture_status": true,
+                        "system_status": 2,
+                        "robot_status": true,
+                        "task_status": 1
+                    }
+                }
+            },
+            "oven": {
+                "status": "success",
+                "data": [
+                    {
+                        "设备名称": "炉1",
+                        "设备地址": 1,
+                        "仪表型号": "858P",
+                        "在线状态": "在线",
+                        "实际温度": 450.5,
+                        "设定温度": 500.0,
+                        "状态显示": "阶段2 剩余0.5h",
+                        "结束时间": "2025-02-09 15:30",
+                        "状态": "开始",
+                        "运行曲线": "Mock曲线"
+                    }
+                ]
+            },
+            "centrifuge": {
+                "status": "success",
+                "data": {
+                    "actual_rpm": 500,
+                    "centrifuge_force": 120,
+                    "run_time": 300,
+                    "fault_code": 0,
+                    "run_state": 2,
+                    "door_window": 2,
+                    "setted_rpm": 500,
+                    "setted_time": 10,
+                    "door_lid": 2,
+                    "rotor_state": 2,
+                    "remain_time": 180
+                }
+            }
+        }
+    },
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281552_50a641f2",
+    "result": null,
+    "results": null
+  }
+  ```
+  6. phase=waiting_xrd_ready //等待人工将样品放入XRD试验台后确认
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "waiting_xrd_ready",
+    "phase_label": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
+    "is_paused": true,
+    "pending_action": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
+    "step_info": "热处理已完成，等待XRD上样",
+    "sub_flow": null,
+    "sub_flow_summaries": null,
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+    "result": null,
+    "results": null
+  }
+  ```
+  7. phase=xrd_running //XRD测试执行中
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "xrd_running",
+    "phase_label": "XRD测试进行中",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "XRD测试执行中 [Mock]",
+    "sub_flow": "xrd",
+    "sub_flow_summaries": {
+        "status": true,
+        "summary": {
+            "xrd": {
+                "name": "XRD衍射仪",
+                "connected": true,
+                "host": "192.168.1.100",
+                "port": 8000,
+                "status": "running",
+                "xray_status": true,
+                "power_status": true,
+                "current_voltage": 45.0,
+                "current_current": 40.0,
+                "untest_station": [],
+                "ready_station": [
+                    "1"
+                ]
+            }
+        }
+    },
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+    "result": null,
+    "results": null
+  }
+  ```
+  8. phase=completed //实验已完成
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "completed",
+    "phase_label": "实验已完成",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "实验流程已全部完成",
+    "sub_flow": null,
+    "sub_flow_summaries": {
+        "status": true,
+        "summary": {
+            "xrd": {
+                "name": "XRD衍射仪",
+                "connected": true,
+                "host": "192.168.1.100",
+                "port": 8000,
+                "status": "running",
+                "xray_status": true,
+                "power_status": true,
+                "current_voltage": 45.0,
+                "current_current": 40.0,
+                "untest_station": [],
+                "ready_station": [
+                    "1"
+                ]
+            }
+        }
+    },
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
+    "result": {
+        "sample_id": "mock",
+        "scheme_id": "方案_A",
+        "scheme_index": 0,
+        "scheme_type": "baseline",
+        "theta2": [],
+        "intensity": [],
+        "timestamp": null
+    },
+    "results": [
+        {
+            "sample_id": "mock",
+            "scheme_id": "方案_A",
+            "scheme_index": 0,
+            "scheme_type": "baseline",
+            "theta2": [],
+            "intensity": [],
+            "timestamp": null
+        },
+        {
+            "sample_id": "mock",
+            "scheme_id": "方案_B",
+            "scheme_index": 1,
+            "scheme_type": "高助熔剂稀释慢冷方案",
+            "theta2": [],
+            "intensity": [],
+            "timestamp": null
+        },
+        {
+            "sample_id": "mock",
+            "scheme_id": "方案_C",
+            "scheme_index": 2,
+            "scheme_type": "高温长保温溶解法方案",
+            "theta2": [],
+            "intensity": [],
+            "timestamp": null
+        },
+        {
+            "sample_id": "mock",
+            "scheme_id": "方案_D",
+            "scheme_index": 3,
+            "scheme_type": "低助熔剂比例极慢冷方案",
+            "theta2": [],
+            "intensity": [],
+            "timestamp": null
+        },
+        {
+            "sample_id": "mock",
+            "scheme_id": "方案_E",
+            "scheme_index": 4,
+            "scheme_type": "酸溶/化学蚀刻分离方案",
+            "theta2": [],
+            "intensity": [],
+            "timestamp": null
+        }
+    ]
+  }
+  ```
+  9. phase=error //实验异常结束
+  ```json
+  {
+    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "phase": "error",
+    "phase_label": "实验异常结束",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "配料已完成，等待熔封确认",
+    "sub_flow": null,
+    "sub_flow_summaries": {
+        "status": true,
+        "summary": {},
+        "message": "实验异常结束"
+    },
+    "error_message": "等待熔封确认超时",
+    "task_name": "AlInSe3_多方案_202602281524_1737dd14",
+    "result": null,
+    "results": null
+  }
+  ```
+  10. phase=idle //空闲
+  ```json
+  {
+    "experiment_id": "none",
+    "phase": "idle",
+    "phase_label": "空闲，可启动实验",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "",
+    "sub_flow": null,
+    "sub_flow_summaries": null,
+    "error_message": null,
+    "task_name": null,
+    "result": null,
+    "results": null
+  }
+  ```
+
+### 确认熔封完成
+- url
+  /api/experiment/flux/confirm_seal
+- method
+  post
+- method
+  post
+- body
+  空
+- response
+  ```json
+  {
+    "message": "熔封确认已接收，流程继续"
+  }
+  ```
+
+### 确认加热炉上料完成
+- url
+  /api/experiment/flux/confirm_thermal_load
+- method
+  post
+- method
+  post
+- body
+  ```json
+  {
+    "oven_id":3,
+    "qty":1
+  }
+  ```
+- response
+  ```json
+  {
+    "message": "上料确认已接收，开始热处理"
+  }
+  ```
+
+### 确认xrd上料
+- url
+  /api/experiment/flux/confirm_xrd_ready
+- method
+  post
+- method
+  post
+- body
+  ```json
+  {
+    "oven_id":3,
+    "qty":1
+  }
+  ```
+- response
+  ```json
+  {
+    "message": "XRD上样确认已接收，开始XRD测试"
+  }
+  ```

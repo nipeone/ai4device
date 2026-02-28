@@ -74,7 +74,7 @@ def _fake_mix_summary(step_info: str = "", task_name: Optional[str] = None) -> D
     }
 
 
-def _fake_thermal_summary(step_info: str = "") -> Dict[str, Any]:
+def _fake_thermal_summary(step_info: str = "", task_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Mock 下热处理子流程 get_summary 的假数据，与 thermal_flow.get_summary() 及各 device.get_running_status() 结构一致。
     真实返回：{"status": True, "summary": {"robot": ..., "oven": ..., "centrifuge": ...}}。
@@ -249,7 +249,11 @@ class ExperimentOrchestrator:
                     out = thermal_flow_mgr.get_summary()
                 except Exception as e:
                     out = {"status": False, "message": str(e), "summary": {}}
-        elif phase in (ExperimentPhase.XRD_RUNNING, ExperimentPhase.COMPLETED, ExperimentPhase.ERROR):
+        elif phase == ExperimentPhase.ERROR:
+            with self._lock:
+                err = self._error_message
+            out = {"status": False, "message": err or "实验异常结束", "summary": {}}
+        elif phase in (ExperimentPhase.XRD_RUNNING, ExperimentPhase.COMPLETED):
             if _MOCK_DEVICES:
                 out = _fake_xrd_summary(step_info)
             else:
