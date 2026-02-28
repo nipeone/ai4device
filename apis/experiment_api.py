@@ -7,7 +7,7 @@
 - POST /flux/from_excel：兼容旧版，上传 Excel 解析为配料任务（无温度曲线，曲线由 confirm_thermal_load 或默认提供）。
 
 流程节点：
-  配料 -> [等待熔封确认] -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
+  配料、熔封 -> [等待熔封确认] -> 上料 -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
 """
 from typing import Optional
 
@@ -19,6 +19,7 @@ from services.mixer import mixer_service
 from services.experiment_input import (
     llm_output_to_add_task_request,
     llm_output_to_curve_points,
+    get_sample_manifest,
 )
 from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest
 from schemas.llm_output import StartExperimentRequest
@@ -33,24 +34,29 @@ async def start_experiment(body: StartExperimentRequest):
     """
     使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
 
-    从 body 中提取：
-    - 推荐实验方案列表[方案索引].工艺参数.原料信息、原料标准化 -> 配料任务 AddTaskRequest
-    - 推荐实验方案列表[方案索引].工艺参数.温度程序 -> 加热炉曲线 List[CurvePoint]（时间单位：小时）
-    可选 方案索引（默认 0）指定运行第几个方案。
+    推荐实验方案列表 顺序即试管序号：配料按该顺序出列（每列一配方），加热、离心、XRD 与同一序号对应。
+    - 配料：推荐实验方案列表 全部参与，layout 每列对应一个方案；
+    - 温度曲线：取第一个方案的 工艺参数.温度程序；
+    - 完成时 result/results 含 scheme_id，便于大模型按配方总结。
 
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
-    返回 experiment_id 与当前 phase，可通过 GET /api/experiment/status 查询进度。
     """
-    # 配料数据
+    try:
+        sample_manifest = get_sample_manifest(body)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(e)},
+        )
     add_task = llm_output_to_add_task_request(body)
-    # 工艺曲线数据
     curve_points = llm_output_to_curve_points(body)
-    logger.info(f"add_task: {add_task}")
+    logger.info(f"add_task: {add_task}, sample_manifest: {len(sample_manifest)} tube(s)")
     logger.info(f"curve_points: {curve_points}")
     thermal_params = {
         "oven_id": 3,
-        "qty": 1,
+        "qty": len(sample_manifest),
         "curve_points": [p.model_dump() for p in curve_points],
+        "sample_manifest": sample_manifest,
     }
     try:
         result = experiment_orchestrator.start(add_task, thermal_params=thermal_params)

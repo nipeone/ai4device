@@ -4,9 +4,9 @@
 输入结构（与 data/llm_output.json 一致）：
 - 目标材料：化学式等
 - 推荐实验方案列表：[ { 方案ID, 工艺参数: { 原料信息, 原料标准化, 温度程序 }, ... }, ... ]
-- 方案索引：选用第几个方案（默认 0）
+- 推荐实验方案列表 顺序即试管/配方序号（0,1,2,...），配料、加热、XRD 均按此序号对应
 
-根据 配料总总量（默认 5g）与 原料标准化 计算各原料 add_weight。
+根据 配料总总量（默认 5g）与 原料标准化 计算各原料质量；下发给配料机时 add_weight 为毫克（mg）。
 大模型输出为摩尔比，需转换为质量比后下发给配料设备。
 """
 import re
@@ -131,16 +131,30 @@ def molar_ratios_to_mass_weights(
 
 def get_selected_scheme(req: StartExperimentRequest) -> RecommendExperimentScheme:
     """
-    从请求中取当前选中的实验方案（按 方案索引）。
-    若列表为空或索引越界，抛出 ValueError。
+    从请求中取第一个实验方案（用于温度曲线等单方案逻辑）。列表为空时抛出 ValueError。
     """
     schemes = req.推荐实验方案列表 or []
     if not schemes:
         raise ValueError("推荐实验方案列表为空，无法启动实验")
-    idx = req.方案索引 if req.方案索引 is not None else 0
-    if idx < 0 or idx >= len(schemes):
-        raise ValueError(f"方案索引 {idx} 越界，当前共有 {len(schemes)} 个方案")
-    return schemes[idx]
+    return schemes[0]
+
+
+def get_sample_manifest(req: StartExperimentRequest) -> List[dict]:
+    """
+    按 推荐实验方案列表 顺序生成试管配方清单，供加热/XRD 与序号对应。
+    返回列表每项为 {"scheme_index": int, "scheme_id": str, "scheme_type": str}，长度 = len(推荐实验方案列表)。
+    """
+    schemes = req.推荐实验方案列表 or []
+    if not schemes:
+        raise ValueError("推荐实验方案列表为空，无法启动实验")
+    return [
+        {
+            "scheme_index": i,
+            "scheme_id": (getattr(s, "方案ID", None) or "").strip() or f"方案{i}",
+            "scheme_type": (getattr(s, "方案类型", None) or "").strip() or "",
+        }
+        for i, s in enumerate(schemes)
+    ]
 
 
 def _parse_ratio_string(ratio_str: str) -> List[float]:
@@ -189,6 +203,104 @@ def _parse_ingredients_from_info(原料信息: str) -> List[str]:
     return [x.strip() for x in s.split(",") if x.strip()]
 
 
+def _parse_flux_ratio(助熔剂标准化: str) -> Optional[Tuple[str, float, float]]:
+    """
+    解析 助熔剂标准化 字符串，得到「助熔剂名: 助熔剂比例 : 原料总量比例」。
+    示例："Na:(Al+In+Se)=2.7:1" -> ("Na", 2.7, 1.0)；助熔剂与全部原料的摩尔比 2.7:1。
+    返回 (flux_name, flux_ratio, main_ratio)，无法解析时返回 None。
+    """
+    if not (助熔剂标准化 and 助熔剂标准化.strip()):
+        return None
+    s = 助熔剂标准化.strip()
+    if "=" not in s:
+        return None
+    left, right = s.split("=", 1)
+    left, right = left.strip(), right.strip()
+    # 右侧 "2.7:1" 或 "10.0:1"
+    parts = re.split(r"\s*:\s*", right)
+    if len(parts) < 2:
+        return None
+    try:
+        flux_ratio = float(parts[0].strip())
+        main_ratio = float(parts[1].strip())
+    except (ValueError, TypeError):
+        return None
+    if main_ratio <= 0:
+        return None
+    # 左侧 "Na:(Al+In+Se)"，取冒号前为助熔剂名
+    flux_name = left.split(":")[0].strip() if ":" in left else left.strip()
+    if not flux_name:
+        return None
+    return (flux_name, flux_ratio, main_ratio)
+
+
+def _parse_flux_from_info(助熔剂信息: str) -> Optional[str]:
+    """
+    从 助熔剂信息 解析出助熔剂物质名（用于与 助熔剂标准化 中的名称对应或兜底）。
+    示例："Na 助熔剂" -> "Na"，"NaCl-KCl 混合助熔剂" -> "NaCl-KCl"。
+    """
+    if not (助熔剂信息 and 助熔剂信息.strip()):
+        return None
+    s = 助熔剂信息.strip()
+    # 去掉「助熔剂」及其后括号内容
+    for sep in ["助熔剂", "助溶剂"]:
+        if sep in s:
+            s = s.split(sep)[0].strip()
+    if "(" in s:
+        s = s.split("(")[0].strip()
+    s = s.strip()
+    return s if s else None
+
+
+def _main_and_flux_weights(
+    main_substances: List[str],
+    molar_ratios: List[float],
+    total_weight_g: float,
+    flux_name: Optional[str],
+    flux_ratio: float,
+    main_ratio: float,
+) -> Tuple[List[float], float]:
+    """
+    在「原料 + 助熔剂 = total_weight_g（克）」约束下，按原料摩尔比与助熔剂:原料摩尔比分配质量。
+    返回 (原料各物质质量列表, 助熔剂质量克)。无助熔剂时 flux_ratio/main_ratio 视为 0，助熔剂质量=0。
+    """
+    n = len(main_substances)
+    if n == 0 or total_weight_g <= 0:
+        return [], 0.0
+    ratios = molar_ratios[:n] if molar_ratios else []
+    if not ratios:
+        return [total_weight_g / n] * n, 0.0
+
+    # 原料摩尔质量与 r_i*M_i
+    S_main = 0.0  # sum(r_i * M_i)
+    sum_r = 0.0
+    for i in range(n):
+        M = get_molar_mass(main_substances[i])
+        r = ratios[i] if i < len(ratios) else 1.0
+        sum_r += r
+        S_main += r * M if M > 0 else 0.0
+
+    M_flux = get_molar_mass(flux_name) if flux_name else 0.0
+    flux_part = 0.0
+    if flux_name and M_flux > 0 and main_ratio > 0 and flux_ratio >= 0:
+        flux_part = sum_r * (flux_ratio / main_ratio) * M_flux
+
+    denom = S_main + flux_part
+    if denom <= 0:
+        return [total_weight_g / n] * n, 0.0
+
+    R = total_weight_g / denom
+    main_weights = []
+    for i in range(n):
+        M = get_molar_mass(main_substances[i])
+        r = ratios[i] if i < len(ratios) else 1.0
+        main_weights.append(R * r * M if M > 0 else 0.0)
+    flux_mass_g = total_weight_g - sum(main_weights)
+    if flux_mass_g < 0:
+        flux_mass_g = 0.0
+    return main_weights, flux_mass_g
+
+
 def _ratios_to_weights(
     n_ingredients: int,
     ratios: List[float],
@@ -215,12 +327,14 @@ def _ratios_to_weights(
     return [total_weight * (ri / total_r) for ri in r]
 
 
-# 默认配料总总量（克），新结构无该字段时使用
+# 默认配料总总量（克），用于按比例计算；下发给配料机时转换为 mg
 DEFAULT_TOTAL_WEIGHT = 5.0
+# 配料机 add_weight 单位为毫克（mg）
+G_PER_MG = 1000.0
 
 
 def llm_output_to_task_name(req: StartExperimentRequest) -> str:
-    """从 LLM 输出生成配料任务名称：目标材料化学式_方案ID_时间戳"""
+    """从 LLM 输出生成配料任务名称：目标材料化学式_方案ID_时间戳（单方案）或多方案_时间戳"""
     scheme = get_selected_scheme(req)
     formula = ""
     if req.目标材料 and getattr(req.目标材料, "化学式", None):
@@ -233,30 +347,39 @@ def llm_output_to_task_name(req: StartExperimentRequest) -> str:
     return f"{scheme_id}_{ts}_{uid}"
 
 
+def _get_schemes_for_layout(req: StartExperimentRequest) -> List[RecommendExperimentScheme]:
+    """
+    参与配料任务的方案列表 = 推荐实验方案列表 全部按顺序（每列一个配方，与试管序号一致）。
+    """
+    schemes = req.推荐实验方案列表 or []
+    if not schemes:
+        raise ValueError("推荐实验方案列表为空，无法生成配料任务")
+    return list(schemes)
+
+
 def llm_output_to_add_task_request(
     req: StartExperimentRequest,
     check_chemical: bool = False,
     total_weight: float = DEFAULT_TOTAL_WEIGHT,
 ) -> AddTaskRequest:
     """
-    从大模型规范输出提取原料，生成 AddTaskRequest。
-    使用选中方案的 工艺参数.原料信息、工艺参数.原料标准化；
-    配料总总量 使用 total_weight（默认 5g），按比例计算各原料 add_weight。
+    从大模型规范输出生成配料机可识别的 AddTaskRequest。
+
+    配料机 layout_list 约定：一种配方占一列（unit_column），列内每种原料占一行（unit_row）。
+    - 推荐实验方案列表 中的每个方案 → 一列（unit_column=0,1,2,...）；
+    - 每个方案内的 工艺参数.原料信息、原料标准化 解析为多种物质 → 该列内 unit_row=0,1,2,...；
+    - 工艺参数.助熔剂信息、助熔剂标准化 解析助熔剂与原料总量的比值（如 Na:(Al+In+Se)=2.7:1）；原料与助熔剂共同满足「原料总质量 + 助熔剂质量 = total_weight（默认 5g）」；
+    - 摩尔比转为质量时内部用克（g），total_weight 为克；写入 layout 的 add_weight 转为毫克（mg）供配料机使用。
+
+    配料列顺序、试管顺序、加热/XRD 序号均与 推荐实验方案列表 顺序一致。
     """
-    scheme = get_selected_scheme(req)
-    recipe: Optional[ProcessRecipe] = scheme.工艺参数
-    if not recipe:
-        raise ValueError("选中方案的工艺参数为空，无法生成配料任务")
-
-    task_name = llm_output_to_task_name(req)
-    layout_list: List[LayoutListItem] = []
-
-    ingredients_str = (recipe.原料信息 or "").strip()
-    ratio_str = (recipe.原料标准化 or "").strip()
-    substances = _parse_ingredients_from_info(ingredients_str)
-    molar_ratios = _parse_ratio_string(ratio_str)
-    # 大模型输出为摩尔比，转换为质量比后下发给配料设备
-    weights = molar_ratios_to_mass_weights(substances, molar_ratios, total_weight)
+    schemes = _get_schemes_for_layout(req)
+    formula = ""
+    if req.目标材料 and getattr(req.目标材料, "化学式", None):
+        formula = (req.目标材料.化学式 or "").strip()
+    ts = datetime.now().strftime("%Y%m%d%H%M")
+    uid = str(uuid.uuid4())[:8]
+    task_name = f"{formula}_多方案_{ts}_{uid}" if len(schemes) > 1 else llm_output_to_task_name(req)
 
     chemical_list: List[ChemicalListItem] = []
     if check_chemical:
@@ -273,42 +396,102 @@ def llm_output_to_add_task_request(
                 return True, getattr(chemical, "fid", 0), getattr(chemical, "sssi", "")
         return False, 0, ""
 
-    for idx, substance in enumerate(substances):
-        if check_chemical:
-            exists, chemical_id, sssi = check_chemical_exists(substance)
-            if not exists:
-                raise ValueError(f"化学品 {substance} 不存在，请先添加化学品")
-        add_weight = weights[idx] if idx < len(weights) else 0.0
-        process_json = ProcessJson(
-            resource_type="CC10R10C",
-            substance=substance,
-            add_weight=round(add_weight, 4),
-            offset=0.0,
-        )
-        if check_chemical:
-            process_json.chemical_id = chemical_id
-            process_json.SSSI = sssi
-        layout_item = LayoutListItem(
-            layout_code="",
-            src_layout_code="",
-            resource_type="CC10R10C",
-            tray_QR_code="",
-            status=0,
-            QR_code="",
-            unit_type="exp_add_powder",
-            unit_column=0,
-            unit_row=0,
-            unit_id=f"unit-{str(uuid.uuid4())[:8]}",
-            process_json=process_json,
-        )
-        layout_list.append(layout_item)
+    layout_list: List[LayoutListItem] = []
+    for col_idx, scheme in enumerate(schemes):
+        recipe: Optional[ProcessRecipe] = scheme.工艺参数
+        if not recipe:
+            raise ValueError(f"方案 col={col_idx} 的工艺参数为空")
+        ingredients_str = (recipe.原料信息 or "").strip()
+        ratio_str = (recipe.原料标准化 or "").strip()
+        substances = _parse_ingredients_from_info(ingredients_str)
+        molar_ratios = _parse_ratio_string(ratio_str)
+
+        flux_ratio_tuple = _parse_flux_ratio((recipe.助熔剂标准化 or "").strip())
+        flux_name_from_info = _parse_flux_from_info((recipe.助熔剂信息 or "").strip())
+        if flux_ratio_tuple:
+            flux_name, flux_ratio, main_ratio = flux_ratio_tuple
+            flux_substance = flux_name or flux_name_from_info or "助熔剂"
+            weights, flux_mass_g = _main_and_flux_weights(
+                substances, molar_ratios, total_weight,
+                flux_substance, flux_ratio, main_ratio,
+            )
+        else:
+            flux_substance = None
+            flux_mass_g = 0.0
+            weights = molar_ratios_to_mass_weights(substances, molar_ratios, total_weight)
+
+        for row_idx, substance in enumerate(substances):
+            if check_chemical:
+                exists, chemical_id, sssi = check_chemical_exists(substance)
+                if not exists:
+                    raise ValueError(f"化学品 {substance} 不存在，请先添加化学品")
+            add_weight_g = weights[row_idx] if row_idx < len(weights) else 0.0
+            add_weight_mg = round(add_weight_g * G_PER_MG, 2)
+            process_json = ProcessJson(
+                resource_type="CC10R10C",
+                substance=substance,
+                add_weight=add_weight_mg,
+                offset=0.0,
+            )
+            if check_chemical:
+                process_json.chemical_id = chemical_id
+                process_json.SSSI = sssi
+            layout_item = LayoutListItem(
+                layout_code="",
+                src_layout_code="",
+                resource_type="CC10R10C",
+                tray_QR_code="",
+                status=0,
+                QR_code="",
+                unit_type="exp_add_powder",
+                unit_column=col_idx,
+                unit_row=row_idx,
+                unit_id=f"unit-{str(uuid.uuid4())[:8]}",
+                process_json=process_json,
+            )
+            layout_list.append(layout_item)
+
+        # 助熔剂：已在上面与原料一起按「原料+助熔剂=total_weight」分配，此处仅追加一行
+        if flux_substance is not None and flux_mass_g > 0:
+                if check_chemical:
+                    exists, chemical_id, sssi = check_chemical_exists(flux_substance)
+                    if not exists:
+                        raise ValueError(f"化学品（助熔剂）{flux_substance} 不存在，请先添加化学品")
+                flux_mass_mg = round(flux_mass_g * G_PER_MG, 2)
+                process_json_flux = ProcessJson(
+                    resource_type="CC10R10C",
+                    substance=flux_substance,
+                    add_weight=flux_mass_mg,
+                    offset=0.0,
+                )
+                if check_chemical:
+                    process_json_flux.chemical_id = chemical_id
+                    process_json_flux.SSSI = sssi
+                layout_list.append(
+                    LayoutListItem(
+                        layout_code="",
+                        src_layout_code="",
+                        resource_type="CC10R10C",
+                        tray_QR_code="",
+                        status=0,
+                        QR_code="",
+                        unit_type="exp_add_powder",
+                        unit_column=col_idx,
+                        unit_row=len(substances),
+                        unit_id=f"unit-{str(uuid.uuid4())[:8]}",
+                        process_json=process_json_flux,
+                    )
+                )
 
     if not layout_list:
-        layout_item = LayoutListItem(
-            unit_id="placeholder",
-            process_json=ProcessJson(substance=ingredients_str or "未指定", add_weight=0.0),
+        layout_list.append(
+            LayoutListItem(
+                unit_id="placeholder",
+                process_json=ProcessJson(substance="未指定", add_weight=0),
+                unit_column=0,
+                unit_row=0,
+            )
         )
-        layout_list.append(layout_item)
 
     return AddTaskRequest(
         task_name=task_name,

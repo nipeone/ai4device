@@ -375,9 +375,15 @@ class XRDFlowManager:
         
         if len(samples) > 30:
             return self._return_with_error("样品数量超过30个，最多支持30个样品")
-        
-        if not self._check_device_ready():
-            return self._return_with_error("设备未就绪")
+
+        self.running = True
+        ################################################################
+        # 步骤0: 准备设备 #
+        ################################################################
+        self._log_step("步骤0: 准备设备：设置自动模式、升高压、设置电压电流、等待电压电流稳定...", "INFO")
+        if not self._prepare_device(check_interval):
+            return self._return_with_error("设备准备失败")
+
         
         results = []
         station_counter = 1
@@ -395,13 +401,7 @@ class XRDFlowManager:
             if not response.get("status"):
                 error_msg = response.get("message", "不允许上样")
                 self._log_step(f"上样请求被拒绝: {error_msg}", "ERROR")
-                results.append({
-                    "sample_id": sample_id,
-                    "station": station,
-                    "status": False,
-                    "message": error_msg
-                })
-                continue
+                return self._return_with_error(f"上样请求被拒绝: {error_msg}")
             
             # 步骤2: 等待人工上样
             self._log_step(f"步骤2: 等待人工上样 (样品{idx}, 工位{station})...", "INFO")
@@ -553,38 +553,38 @@ class XRDFlowManager:
                 "data": None
             }
 
-    def run(self, 
-            single=True, 
+    def run(self,
+            single: bool = True,
             sample_id: str = "XY000",
             start_theta: float = 5.0,
             end_theta: float = 120.0,
             increment: float = 0.01,
-            exp_time: float = 0.1
-        ):
-
-        if start_theta <= 5.0:
-            raise Exception(f"起始角度需要>5.0")
-
-        if end_theta > 120.0:
-            raise Exception(f"结束角度需要<120.0")
-
-        if end_theta < start_theta:
-            raise Exception(f"结束角度应该大于起始角度")
-
-        
-
-        if end_theta - start_theta < 10:
-            raise Exception(f"起始角度和结束角度之差应该≥10")
-
-        if exp_time >= 5.0:
-            raise Exception(f"曝光时间不能>5.0s")
-
+            exp_time: float = 0.1,
+            samples: Optional[List[Dict[str, Any]]] = None,
+        ) -> Dict[str, Any]:
+        """
+        单样品或多样品 XRD 测试。single=True 时用 sample_id/start_theta 等；single=False 时用 samples 列表（每项含 sample_id、start_theta、end_theta 等），便于与配方 scheme_id 关联。
+        """
         if single:
+            if start_theta <= 5.0:
+                raise Exception("起始角度需要>5.0")
+            if end_theta > 120.0:
+                raise Exception("结束角度需要<120.0")
+            if end_theta < start_theta:
+                raise Exception("结束角度应该大于起始角度")
+            if end_theta - start_theta < 10:
+                raise Exception("起始角度和结束角度之差应该≥10")
+            if exp_time >= 5.0:
+                raise Exception("曝光时间不能>5.0s")
             return self.run_single_sample_test(sample_id, start_theta, end_theta, increment, exp_time)
         else:
-            # TODO 多样品模式
-            raise Exception("尚未实现多样品模式")
-            # self.run_multi_sample_test()
+            if not samples or len(samples) == 0:
+                raise Exception("多样品模式需传入 samples 列表")
+            return self.run_multi_sample_test(
+                samples=samples,
+                wait_for_all=True,
+                check_interval=5.0,
+            )
 
     def get_summary(self) -> dict:
         """获取XRD流程总结"""
