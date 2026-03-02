@@ -82,7 +82,7 @@ class StartExperimentResponse(BaseModel):
 
 
 class ThermalParamsRequest(BaseModel):
-    """热处理启动参数（在确认“样品已放入加热炉”时可选传入）"""
-    oven_id: int = Field(default=1, description="炉子ID")
-    qty: int = Field(default=1, description="数量")
+    """热处理启动参数（在确认“样品已放入加热炉”时可选传入；不传则沿用启动时的 oven_id/qty）"""
+    oven_id: Optional[int] = Field(default=None, description="炉子ID，不传则沿用启动时的值")
+    qty: Optional[int] = Field(default=None, description="试管数量，不传则沿用启动时的值（=推荐实验方案列表长度）")
     curve_name: Optional[str] = Field(default=None, description="已保存的曲线名称，不传则尝试使用默认曲线")

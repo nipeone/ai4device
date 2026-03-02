@@ -56,8 +56,12 @@ def stop_xrd_single_sample_test():
     return {"msg": "xrd已停止"}
 
 @router.post("/xrd/confirm", tags=["xrd衍射仪流程"])
-def confirm_xrd_single_sample_test():
-    """确认xrd单样品测试完成"""
+def confirm_xrd_test():
+    """
+    确认 XRD 流程中的当前等待步骤（人工上样/下样等）。
+    单样品：上样时调用 1 次即可；多样品：每支试管上样、每支试管下样各需调用 1 次（6 支共 12 次）。
+    当前等待提示见 GET /api/experiment/status 的 step_info。
+    """
     xrd_flow_mgr.user_confirm()
     return {"msg": "完成确认"}
 

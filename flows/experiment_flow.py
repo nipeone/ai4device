@@ -649,17 +649,17 @@ class ExperimentOrchestrator:
 
     def confirm_thermal_load(
         self,
-        oven_id: int = 1,
-        qty: int = 1,
+        oven_id: Optional[int] = None,
+        qty: Optional[int] = None,
         curve_name: Optional[str] = None,
         curve_points: Optional[list] = None,
     ) -> None:
-        """确认样品已放入加热炉，可选传入热处理参数；与 start 时的 thermal_params 合并，保留已有 curve_points（若未传 curve_name/curve_points）"""
+        """确认样品已放入加热炉，可选传入热处理参数；与 start 时的 thermal_params 合并。未传的 oven_id/qty 沿用启动时的值。"""
         with self._lock:
             prev = self._thermal_params or {}
             self._thermal_params = {
-                "oven_id": oven_id,
-                "qty": qty,
+                "oven_id": oven_id if oven_id is not None else prev.get("oven_id", 1),
+                "qty": qty if qty is not None else prev.get("qty", 1),
                 "curve_name": curve_name or prev.get("curve_name"),
                 "curve_points": curve_points if curve_points is not None else prev.get("curve_points"),
                 "sample_manifest": prev.get("sample_manifest"),

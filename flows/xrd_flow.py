@@ -358,8 +358,10 @@ class XRDFlowManager:
                           wait_for_all: bool = True,
                           check_interval: float = 5.0) -> Dict[str, Any]:
         """
-        多样品模式测试流程（最多30个样品）
-        
+        多样品模式测试流程（最多30个样品）。
+        流程为顺序测试：对每个样品依次执行「等待人工上样确认 → send_sample_ready」；同一套确认接口（如 POST /api/flow/xrd/confirm）需在每次提示时调用一次，共 N 次上样确认 + N 次下样确认。
+        注意：单样品 run_single_sample_test 已在现场设备验证；本多样品流程尚未在现场设备上完整验证，上线前需现场联调。
+
         :param samples: 样品列表，每个样品包含：
             - sample_id: 样品标识符
             - start_theta: 起始角度（≥5°）

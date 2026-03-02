@@ -1,5 +1,20 @@
 ## 试验调用API
 
+### 实验流程梳理（与代码一致）
+
+1. **启动**：`POST /api/experiment/flux` 入参为大模型输出的「推荐实验方案列表」等。试管序号 = 列表下标（0,1,2,…），整条链路一致。
+2. **配料**：按「推荐实验方案列表」顺序，每列一个方案，产出 N 支试管（如 6 种方案 → 6 支试管），列序 = 试管序。
+3. **熔封**：熔封后将试管放到货架1，调用 `POST /api/experiment/flux/confirm_seal`。
+4. **上料**：流程进入“等待加热炉上料确认”。
+5. **指定炉号并确认上料**：人工或机械臂将 N 支试管放入**指定高温炉**后，调用 `POST /api/experiment/flux/confirm_thermal_load`，body 中可传 `oven_id`（炉子编号）、`qty`（数量）；不传则沿用启动时的值（启动时 qty = 推荐实验方案列表长度）。
+6. **热处理**：同一炉内加热（一条温度曲线），完成后**离心**（thermal_flow 内部：炉子取 → 离心机放 → 离心运行 → 离心机取 → 货架2放），试管顺序保持不变。
+7. **线下切削**：离心后成品需人工线下切削，不在本 API 流程内。
+8. **XRD 上样**：人工将样品放入 XRD 试验台后调用 `POST /api/experiment/flux/confirm_xrd_ready`。
+9. **XRD 测试**：按试管序号依次测试。单试管用 `run_single_sample_test`（已在现场设备验证）；多试管用 `run_multi_sample_test`（**尚未在现场设备上完整验证**，上线前需现场联调）。结果通过 `scheme_id`/`scheme_index` 与配方关联，供大模型按配方总结。
+   - **多样品时的多次确认**：多试管（如 6 支）时，`run_multi_sample_test` 在循环内对**每个样品**依次执行「等待人工上样 → 调用 `send_sample_ready`」，即第 1 支上样并确认 → 第 2 支上样并确认 → … → 第 6 支；测试结束后再对每支做「下样确认」。每次等待时需调用 **`POST /api/flow/xrd/confirm`** 一次，前端可根据 `GET /api/experiment/status` 返回的 `step_info` 展示当前提示（如「请将样品方案2放到工位2，然后点击确认」）。6 支试管共需 6 次上样确认 + 6 次下样确认。
+
+**逻辑自洽要点**：配料列序 = 试管序 = 加热/离心顺序 = XRD 的 station/结果顺序；炉号由 `confirm_thermal_load` 的 `oven_id` 指定；温度曲线取第一个方案的「温度程序」。
+
 ### 启动试验
 - url
   /api/experiment/flux
@@ -681,8 +696,6 @@
   /api/experiment/flux/confirm_seal
 - method
   post
-- method
-  post
 - body
   空
 - response
@@ -697,13 +710,12 @@
   /api/experiment/flux/confirm_thermal_load
 - method
   post
-- method
-  post
 - body
+  可选，用于指定炉号和数量（不传则沿用启动时的 oven_id、qty）：
   ```json
   {
-    "oven_id":3,
-    "qty":1
+    "oven_id": 3,
+    "qty": 6
   }
   ```
 - response
@@ -713,20 +725,13 @@
   }
   ```
 
-### 确认xrd上料
+### 确认XRD上样
 - url
   /api/experiment/flux/confirm_xrd_ready
 - method
   post
-- method
-  post
 - body
-  ```json
-  {
-    "oven_id":3,
-    "qty":1
-  }
-  ```
+  空
 - response
   ```json
   {
