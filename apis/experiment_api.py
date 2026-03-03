@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/experiment", tags=["实验"])
 
 
 @router.post("/flux", tags=["实验"])
-async def start_experiment(body: StartExperimentRequest):
+async def start_experiment(req: StartExperimentRequest):
     """
     使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
 
@@ -42,14 +42,14 @@ async def start_experiment(body: StartExperimentRequest):
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     """
     try:
-        sample_manifest = get_sample_manifest(body)
+        sample_manifest = get_sample_manifest(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
             content={"status": "error", "message": str(e)},
         )
-    add_task = llm_output_to_add_task_request(body)
-    curve_points = llm_output_to_curve_points(body)
+    add_task = llm_output_to_add_task_request(req)
+    curve_points = llm_output_to_curve_points(req)
     logger.info(f"add_task: {add_task}, sample_manifest: {len(sample_manifest)} tube(s)")
     logger.info(f"curve_points: {curve_points}")
     thermal_params = {
@@ -59,7 +59,7 @@ async def start_experiment(body: StartExperimentRequest):
         "sample_manifest": sample_manifest,
     }
     try:
-        result = experiment_orchestrator.start(add_task, thermal_params=thermal_params)
+        result = experiment_orchestrator.start(req, add_task, thermal_params)
         return result
     except ValueError as e:
         st = experiment_orchestrator.get_status()

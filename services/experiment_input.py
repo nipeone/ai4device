@@ -502,8 +502,8 @@ def llm_output_to_add_task_request(
 def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
     """
     从选中方案的 工艺参数.温度程序 生成加热炉曲线 List[CurvePoint]。
-    时间单位：小时；温度单位：摄氏度。
-    曲线段：升温到最高温 -> 最高温保温 -> 主降温；最后一点 time=-121 表示结束。
+    时间单位：小时（累积时间从 0 起）；温度单位：摄氏度。
+    曲线段顺序与 llm_output 一致：升温到次高温 -> 次高温保温 -> 升温到最高温 -> 最高温保温 -> 主降温 -> 低温段保温；最后一点 temperature=-121 表示结束。
     """
     scheme = get_selected_scheme(req)
     recipe = scheme.工艺参数
@@ -514,31 +514,48 @@ def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
         ]
 
     tp: TemperatureProgram = recipe.温度程序
-    ramp_h = tp.升温到最高温时间_h or 0.0
-    T_high = tp.最高温段保温温度_摄氏 or 0.0
-    hold_h = tp.最高温段保温时间_h or 0.0
-    cool_rate = getattr(tp, "降温速率_主降温_摄氏度每小时", None) or 0.0
-    cool_h = tp.降温时间_主降温_h or 0.0
-
-    ramp_min = ramp_h
-    hold_min = hold_h
-    cool_min = cool_h
-    T_drop = cool_rate * cool_h
-    T_end = max(0.0, T_high - T_drop)
+    t_hr = 0.0  # 累积时间（小时）
 
     points: List[CurvePoint] = []
 
-    if ramp_min > 0 and T_high > 0:
-        points.append(CurvePoint(temperature=T_high, time=ramp_min))
-    if hold_min > 0:
-        points.append(CurvePoint(temperature=T_high, time=ramp_min + hold_min))
-    if cool_min > 0:
-        points.append(
-            CurvePoint(
-                temperature=T_end,
-                time=ramp_min + hold_min + cool_min,
-            )
-        )
+    # 1. 升温到次高温
+    ramp1_hr = float(tp.升温到次高温时间_h or 0.0)
+    T1 = float(tp.次高温段温度_摄氏 or 0.0)
+    if ramp1_hr > 0 and T1 > 0:
+        t_hr += ramp1_hr
+        points.append(CurvePoint(temperature=T1, time=t_hr))
+
+    # 2. 次高温段保温
+    hold1_hr = float(tp.次高温段保温时间_h or 0.0)
+    if hold1_hr > 0:
+        t_hr += hold1_hr
+        points.append(CurvePoint(temperature=T1, time=t_hr))
+
+    # 3. 升温到最高温
+    ramp2_hr = float(tp.升温到最高温时间_h or 0.0)
+    T_high = float(tp.最高温段保温温度_摄氏 or 0.0)
+    if ramp2_hr > 0 and T_high > 0:
+        t_hr += ramp2_hr
+        points.append(CurvePoint(temperature=T_high, time=t_hr))
+
+    # 4. 最高温段保温
+    hold2_hr = float(tp.最高温段保温时间_h or 0.0)
+    if hold2_hr > 0:
+        t_hr += hold2_hr
+        points.append(CurvePoint(temperature=T_high, time=t_hr))
+
+    # 5. 主降温（降温时间_主降温_h 后到达 低温段保温温度_摄氏）
+    cool_hr = float(tp.降温时间_主降温_h or 0.0)
+    T_low = float(tp.低温段保温温度_摄氏 or 0.0)
+    if cool_hr > 0:
+        t_hr += cool_hr
+        points.append(CurvePoint(temperature=T_low, time=t_hr))
+
+    # 6. 低温段保温（可选）
+    hold3_hr = float(tp.低温段保温时间_h or 0.0)
+    if hold3_hr > 0:
+        t_hr += hold3_hr
+        points.append(CurvePoint(temperature=T_low, time=t_hr))
 
     if not points:
         points = [

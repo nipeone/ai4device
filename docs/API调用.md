@@ -8,19 +8,21 @@
 4. **上料**：流程进入“等待加热炉上料确认”。
 5. **指定炉号并确认上料**：人工或机械臂将 N 支试管放入**指定高温炉**后，调用 `POST /api/experiment/flux/confirm_thermal_load`，body 中可传 `oven_id`（炉子编号）、`qty`（数量）；不传则沿用启动时的值（启动时 qty = 推荐实验方案列表长度）。
 6. **热处理**：同一炉内加热（一条温度曲线），完成后**离心**（thermal_flow 内部：炉子取 → 离心机放 → 离心运行 → 离心机取 → 货架2放），试管顺序保持不变。
-7. **线下切削**：离心后成品需人工线下切削，不在本 API 流程内。
+7. **样品制备**：离心后成品需人工线下取样，不在本 API 流程内。
 8. **XRD 上样**：人工将样品放入 XRD 试验台后调用 `POST /api/experiment/flux/confirm_xrd_ready`。
 9. **XRD 测试**：按试管序号依次测试。单试管用 `run_single_sample_test`（已在现场设备验证）；多试管用 `run_multi_sample_test`（**尚未在现场设备上完整验证**，上线前需现场联调）。结果通过 `scheme_id`/`scheme_index` 与配方关联，供大模型按配方总结。
-   - **多样品时的多次确认**：多试管（如 6 支）时，`run_multi_sample_test` 在循环内对**每个样品**依次执行「等待人工上样 → 调用 `send_sample_ready`」，即第 1 支上样并确认 → 第 2 支上样并确认 → … → 第 6 支；测试结束后再对每支做「下样确认」。每次等待时需调用 **`POST /api/flow/xrd/confirm`** 一次，前端可根据 `GET /api/experiment/status` 返回的 `step_info` 展示当前提示（如「请将样品方案2放到工位2，然后点击确认」）。6 支试管共需 6 次上样确认 + 6 次下样确认。
+  - **多样品时的多次确认**：多试管（如 6 支）时，`run_multi_sample_test` 在循环内对**每个样品**依次执行「等待人工上样 → 调用 `send_sample_ready`」，即第 1 支上样并确认 → 第 2 支上样并确认 → … → 第 6 支；测试结束后再对每支做「下样确认」。每次等待时需调用 `**POST /api/flow/xrd/confirm`** 一次，前端可根据 `GET /api/experiment/status` 返回的 `step_info` 展示当前提示（如「请将样品方案2放到工位2，然后点击确认」）。6 支试管共需 6 次上样确认 + 6 次下样确认。
 
 **逻辑自洽要点**：配料列序 = 试管序 = 加热/离心顺序 = XRD 的 station/结果顺序；炉号由 `confirm_thermal_load` 的 `oven_id` 指定；温度曲线取第一个方案的「温度程序」。
 
 ### 启动试验
+
 - url
-  /api/experiment/flux
+/api/experiment/flux
 - method
-  post
+post
 - body
+
 ```json
 {
     "目标材料": {
@@ -299,7 +301,9 @@
     ]
   }
 ```
+
 - response
+
 ```json
 {
     "status": "started",
@@ -311,13 +315,15 @@
 ```
 
 ### 停止试验
+
 - url
-  /api/experiment/stop
+/api/experiment/stop
 - method
-  post
+post
 - body
-  空
+空
 - response
+
 ```json
 {
     "stopped": true,
@@ -326,58 +332,156 @@
 ```
 
 ### 获取试验状态
+
 - url
-  /api/experiment/status
+/api/experiment/status
 - method
-  post
+post
 - body
-  空
+空
 - response
   1. phase=mixing //配料中
   ```json
   {
-      "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
-      "phase": "mixing",
-      "phase_label": "配料进行中",
-      "is_paused": false,
-      "pending_action": "",
-      "step_info": "配料流程启动 [Mock]",
-      "sub_flow": "mix",
-      "sub_flow_summaries": {
-          "status": true,
-          "summary": {
-              "mixer": {
-                  "status": "success",
-                  "data": {
-                      "task_id": 9001,
-                      "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
-                      "unit_save_json": "{}",
-                      "status": 1,
-                      "creator": "mock",
-                      "task_begin_time": 1772262505.8052256,
-                      "task_end_time": null,
-                      "created_at": 0,
-                      "updated_at": 0,
-                      "is_audit_log": 1,
-                      "task_template_id_list": [],
-                      "task_setup": {
-                          "subtype": null,
-                          "powder_100_30": false,
-                          "powder_30_100": false,
-                          "added_slots": ""
-                      },
-                      "unit_list": []
-                  }
-              }
-          }
-      },
-      "error_message": null,
-      "task_name": "AlInSe3_多方案_202602281508_a7c90d0c",
-      "result": null,
-      "results": null
+    "experiment_id": "6fa2d913-7f39-4bf7-a509-de5e8e2d3eea",
+    "phase": "mixing",
+    "phase_label": "配料进行中",
+    "is_paused": false,
+    "pending_action": "",
+    "step_info": "配料流程启动 [Mock]",
+    "sub_flow": "mix",
+    "sub_flow_summaries": {
+        "status": true,
+        "summary": {
+            "mixer": {
+                "status": "success",
+                "data": {
+                    "task_id": 9001,
+                    "task_name": "AlInSe3_多方案_202603021259_304bcb0b",
+                    "status": 1,
+                    "creator": "mock",
+                    "task_begin_time": 1772427599.1635053,
+                    "task_end_time": null,
+                    "created_at": 0,
+                    "updated_at": 0,
+                    "scheme_list": [
+                        {
+                            "scheme_name": "方案0",
+                            "ingredients": [
+                                {
+                                    "substance": "Al",
+                                    "weight": 195.78
+                                },
+                                {
+                                    "substance": "In",
+                                    "weight": 833.02
+                                },
+                                {
+                                    "substance": "Se",
+                                    "weight": 1719.09
+                                },
+                                {
+                                    "substance": "Na",
+                                    "weight": 2252.11
+                                }
+                            ]
+                        },
+                        {
+                            "scheme_name": "方案1",
+                            "ingredients": [
+                                {
+                                    "substance": "Al",
+                                    "weight": 88.27
+                                },
+                                {
+                                    "substance": "In",
+                                    "weight": 375.61
+                                },
+                                {
+                                    "substance": "Se",
+                                    "weight": 775.13
+                                },
+                                {
+                                    "substance": "Na",
+                                    "weight": 3760.99
+                                }
+                            ]
+                        },
+                        {
+                            "scheme_name": "方案2",
+                            "ingredients": [
+                                {
+                                    "substance": "Al",
+                                    "weight": 195.78
+                                },
+                                {
+                                    "substance": "In",
+                                    "weight": 833.02
+                                },
+                                {
+                                    "substance": "Se",
+                                    "weight": 1719.09
+                                },
+                                {
+                                    "substance": "Na",
+                                    "weight": 2252.11
+                                }
+                            ]
+                        },
+                        {
+                            "scheme_name": "方案3",
+                            "ingredients": [
+                                {
+                                    "substance": "Al",
+                                    "weight": 244.78
+                                },
+                                {
+                                    "substance": "In",
+                                    "weight": 1041.52
+                                },
+                                {
+                                    "substance": "Se",
+                                    "weight": 2149.37
+                                },
+                                {
+                                    "substance": "Na",
+                                    "weight": 1564.33
+                                }
+                            ]
+                        },
+                        {
+                            "scheme_name": "方案4",
+                            "ingredients": [
+                                {
+                                    "substance": "Al",
+                                    "weight": 73.33
+                                },
+                                {
+                                    "substance": "In",
+                                    "weight": 312.01
+                                },
+                                {
+                                    "substance": "Se",
+                                    "weight": 643.89
+                                },
+                                {
+                                    "substance": "NaCl",
+                                    "weight": 3970.78
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "error_message": null,
+    "task_name": "AlInSe3_多方案_202603021259_304bcb0b",
+    "result": null,
+    "results": null
   }
   ```
-  2. phase=waiting_seal_confirm //等待熔封完成确认
+  1. phase=waiting_seal_confirm //等待熔封完成确认
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -394,7 +498,7 @@
     "results": null
   }
   ```
-  3. phase=loading //上料中
+  1. phase=loading //上料中
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -411,7 +515,7 @@
     "results": null
   }
   ```
-  4. phase=waiting_thermal_load //等待加热炉上料确认
+  1. phase=waiting_thermal_load //等待加热炉上料确认
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -428,10 +532,10 @@
     "results": null
   }
   ```
-  5. phase=thermal_running //热处理（加热炉+离心机）执行中
+  1. phase=thermal_running //热处理（加热炉+离心机）执行中
   ```json
   {
-    "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
+    "experiment_id": "54d09c0d-b833-41ba-80c4-3667a5eb6394",
     "phase": "thermal_running",
     "phase_label": "热处理进行中（加热炉与离心机）",
     "is_paused": false,
@@ -500,16 +604,42 @@
                     "rotor_state": 2,
                     "remain_time": 180
                 }
-            }
+            },
+            "temperature_curve": [
+                {
+                    "temperature": 600.0,
+                    "time": 11.5
+                },
+                {
+                    "temperature": 600.0,
+                    "time": 13.5
+                },
+                {
+                    "temperature": 870.0,
+                    "time": 14.5
+                },
+                {
+                    "temperature": 870.0,
+                    "time": 38.5
+                },
+                {
+                    "temperature": 600.0,
+                    "time": 188.5
+                },
+                {
+                    "temperature": -121.0,
+                    "time": 0.0
+                }
+            ]
         }
     },
     "error_message": null,
-    "task_name": "AlInSe3_多方案_202602281552_50a641f2",
+    "task_name": "AlInSe3_多方案_202603021318_50740009",
     "result": null,
     "results": null
   }
   ```
-  6. phase=waiting_xrd_ready //等待人工将样品放入XRD试验台后确认
+  1. phase=waiting_xrd_ready //等待人工将样品放入XRD试验台后确认
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -526,7 +656,7 @@
     "results": null
   }
   ```
-  7. phase=xrd_running //XRD测试执行中
+  1. phase=xrd_running //XRD测试执行中
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -562,7 +692,7 @@
     "results": null
   }
   ```
-  8. phase=completed //实验已完成
+  1. phase=completed //实验已完成
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -652,7 +782,7 @@
     ]
   }
   ```
-  9. phase=error //实验异常结束
+  1. phase=error //实验异常结束
   ```json
   {
     "experiment_id": "d0602bb8-651a-404c-a1b5-1570f3dfa307",
@@ -673,7 +803,7 @@
     "results": null
   }
   ```
-  10. phase=idle //空闲
+  1. phase=idle //空闲
   ```json
   {
     "experiment_id": "none",
@@ -692,12 +822,13 @@
   ```
 
 ### 确认熔封完成
+
 - url
-  /api/experiment/flux/confirm_seal
+/api/experiment/flux/confirm_seal
 - method
-  post
+post
 - body
-  空
+空
 - response
   ```json
   {
@@ -706,12 +837,13 @@
   ```
 
 ### 确认加热炉上料完成
+
 - url
-  /api/experiment/flux/confirm_thermal_load
+/api/experiment/flux/confirm_thermal_load
 - method
-  post
+post
 - body
-  可选，用于指定炉号和数量（不传则沿用启动时的 oven_id、qty）：
+可选，用于指定炉号和数量（不传则沿用启动时的 oven_id、qty）：
   ```json
   {
     "oven_id": 3,
@@ -726,15 +858,17 @@
   ```
 
 ### 确认XRD上样
+
 - url
-  /api/experiment/flux/confirm_xrd_ready
+/api/experiment/flux/confirm_xrd_ready
 - method
-  post
+post
 - body
-  空
+空
 - response
   ```json
   {
     "message": "XRD上样确认已接收，开始XRD测试"
   }
   ```
+

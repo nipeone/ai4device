@@ -196,3 +196,35 @@ class OpTaskRequest(BaseModel):
     quick_cap: int = 1
     use_tip_type: str = ""
     pack_policy: Optional[Any] = None
+
+
+class IngredientItem(BaseModel):
+    substance: str
+    weight: float
+
+class SchemeItem(BaseModel):
+    scheme_name: str
+    ingredients: List[IngredientItem]
+
+class MixerSummaryData(BaseModel):
+    task_id: int
+    task_name: str
+    status: int
+    creator: str
+    task_begin_time: Optional[Any]
+    task_end_time: Optional[Any]
+    created_at: int
+    updated_at: int
+    scheme_list: List[SchemeItem]
+
+class MixerSummaryItem(BaseModel):
+    status: str
+    data: MixerSummaryData
+
+class MixerSummary(BaseModel):
+    mixer: MixerSummaryItem
+
+class MixerSummaryResponse(BaseModel):
+    status: bool
+    summary: MixerSummary
+

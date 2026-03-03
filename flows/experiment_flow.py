@@ -9,11 +9,13 @@
 说明：未引入 Celery。若后续需要任务持久化、多 Worker 或分布式队列，可在此层将
 _run_experiment 拆为多个 Celery task，由本状态机驱动 task 链。
 """
+import json
+import os
 import random
 import threading
 import time
 import uuid
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 from logger import sys_logger as logger
 from schemas.oven import CurvePoint
@@ -28,7 +30,9 @@ from flows.mix_flow import mix_flow_mgr
 from flows.thermal_flow import thermal_flow_mgr
 from flows.xrd_flow import xrd_flow_mgr
 from services.oven import oven_service
-
+from services.experiment_input import llm_output_to_add_task_request
+from schemas.mixer import AddTaskRequest, MixerSummaryResponse
+from schemas.llm_output import StartExperimentRequest
 try:
     import config
     _MOCK_DEVICES = getattr(config, "MOCK_DEVICES", False)
@@ -43,42 +47,180 @@ MOCK_STEP_DURATION_MIN = 20
 MOCK_STEP_DURATION_MAX = 40
 
 
-def _fake_mix_summary(step_info: str = "", task_name: Optional[str] = None) -> Dict[str, Any]:
+def _merge_layout_by_scheme(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Mock 下配料子流程 get_summary 的假数据，与 mix_flow.get_summary() 及 mixer_controller.get_running_status() 结构一致。
-    真实返回：{"status": True, "summary": {"mixer": get_task_info(current_task_id)}}，mixer 为 {"status": "success", "data": GetTaskInfoResponse} 或 error。
-    task_name 应与实验外层 task_name 一致（来自启动时的配料任务名）。
+    将按行展开的 layout（unit_column, unit_row, scheme_name, substance, weight）按列合并为方案列表。
+    返回 [ {"scheme_name": str, "ingredients": [{"substance": str, "weight": float}, ...]}, ... ]，按 unit_column 升序。
     """
-    return {
+    by_col: Dict[int, List[Dict[str, Any]]] = {}
+    for r in rows:
+        col = int(r.get("unit_column", 0))
+        if col not in by_col:
+            by_col[col] = []
+        by_col[col].append(r)
+    scheme_list = []
+    for col in sorted(by_col.keys()):
+        group = sorted(by_col[col], key=lambda x: x.get("unit_row", 0))
+        scheme_name = (group[0].get("scheme_name") or f"scheme{col}").strip() if group else f"scheme{col}"
+        ingredients = [{"substance": r.get("substance", ""), "weight": float(r.get("weight", r.get("add_weight", 0)) or 0)} for r in group]
+        scheme_list.append({"scheme_name": scheme_name, "ingredients": ingredients})
+    return scheme_list
+
+
+def _rows_from_mixer_data(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    从真实配料设备返回的 data（可能含 layout_list、unit_list 等）提取可合并的行。
+    返回 [ {unit_column, unit_row, 方案名称, 元素, 毫克}, ... ]，无法解析时返回 []。
+    """
+    rows: List[Dict[str, Any]] = []
+    raw = data.get("layout_list") or data.get("unit_list") or []
+    if not isinstance(raw, list):
+        return []
+    for i, item in enumerate(raw):
+        if isinstance(item, dict):
+            col = int(item.get("unit_column", item.get("unit_column", 0)))
+            row = int(item.get("unit_row", item.get("unit_row", 0)))
+            pj = item.get("process_json") or item
+            substance = pj.get("substance") or ""
+            add_weight = pj.get("add_weight") or 0
+            rows.append({"unit_column": col, "unit_row": row, "substance": substance, "add_weight": add_weight})
+        else:
+            # Pydantic 模型转 dict 再取
+            col = getattr(item, "unit_column", 0)
+            row = getattr(item, "unit_row", 0)
+            pj = getattr(item, "process_json", item)
+            substance = getattr(pj, "substance", "") if pj else ""
+            add_weight = getattr(pj, "add_weight", 0) if pj else 0
+            rows.append({"unit_column": col, "unit_row": row, "substance": substance, "add_weight": add_weight})
+    return rows
+
+
+def _load_llm_output_json() -> Optional[Dict[str, Any]]:
+    """加载 data/llm_output.json 用于 Mock 时生成与当前方案一致的 fake 数据；失败返回 None。"""
+    for path in [
+        "data/llm_output.json",
+        os.path.join(os.path.dirname(__file__), "..", "data", "llm_output.json"),
+    ]:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return None
+
+
+def _temperature_curve_from_llm_program(program: Dict[str, Any]) -> List[Dict[str, float]]:
+    """从 LLM 温度程序（dict）生成时间-温度曲线数组 [{time, temperature}, ...]，时间单位小时，温度单位℃。"""
+    if not program:
+        return [{"time": 0.0, "temperature": 25.0}, {"time": 1.0, "temperature": 100.0}]
+    t = 0.0
+    curve = [{"time": 0.0, "temperature": 25.0}]
+    # 升温到次高温
+    ramp1 = float(program.get("升温到次高温时间_h") or 0)
+    T1 = float(program.get("次高温段温度_摄氏") or 0)
+    if ramp1 > 0:
+        t += ramp1
+        curve.append({"time": round(t, 2), "temperature": T1})
+    hold1 = float(program.get("次高温段保温时间_h") or 0)
+    if hold1 > 0:
+        t += hold1
+        curve.append({"time": round(t, 2), "temperature": T1})
+    # 升温到最高温
+    ramp2 = float(program.get("升温到最高温时间_h") or 0)
+    T_high = float(program.get("最高温段保温温度_摄氏") or 0)
+    if ramp2 > 0:
+        t += ramp2
+        curve.append({"time": round(t, 2), "temperature": T_high})
+    hold2 = float(program.get("最高温段保温时间_h") or 0)
+    if hold2 > 0:
+        t += hold2
+        curve.append({"time": round(t, 2), "temperature": T_high})
+    # 主降温
+    cool_h = float(program.get("降温时间_主降温_h") or 0)
+    T_low = float(program.get("低温段保温温度_摄氏") or 0)
+    if cool_h > 0:
+        t += cool_h
+        curve.append({"time": round(t, 2), "temperature": T_low})
+    hold3 = float(program.get("低温段保温时间_h") or 0)
+    if hold3 > 0:
+        t += hold3
+        curve.append({"time": round(t, 2), "temperature": T_low})
+    return curve
+
+
+def _fake_mix_summary(
+    step_info: str = "",
+    task_name: Optional[str] = None,
+    mixer_data: Optional[AddTaskRequest] = None,
+) -> Dict[str, Any]:
+    """
+    Mock 下配料子流程 get_summary 的假数据。从 AddTaskRequest 生成时按列合并为方案列表，
+    每组试验方案一项：方案名称 + 配料（元素、毫克）列表。
+    """
+    task_name_out = task_name or "Mock配料任务"
+    方案列表: List[Dict[str, Any]] = []
+
+    if mixer_data:
+        try:
+            add_task = mixer_data
+            task_name_out = add_task.task_name
+            rows: List[Dict[str, Any]] = []
+            for item in add_task.layout_list:
+                unit_column = getattr(item, "unit_column", 0)
+                unit_row = getattr(item, "unit_row", 0)
+                pj = getattr(item, "process_json", None)
+                substance = getattr(pj, "substance", "") if pj else ""
+                add_weight_mg = float(getattr(pj, "add_weight", 0) or 0) if pj else 0.0
+                weight = round(add_weight_mg, 2)
+                rows.append({
+                    "unit_column": unit_column,
+                    "unit_row": unit_row,
+                    "scheme_name": f"方案{unit_column}",
+                    "substance": substance,
+                    "weight": weight,
+                })
+            scheme_list = _merge_layout_by_scheme(rows)
+        except Exception:
+            scheme_list = []
+
+    # 与真实 GetTaskInfoResponse + 方案列表 格式一致，便于前端统一处理
+    return MixerSummaryResponse(**{
         "status": True,
         "summary": {
             "mixer": {
                 "status": "success",
                 "data": {
                     "task_id": 9001,
-                    "task_name": task_name or "Mock配料任务",
-                    "unit_save_json": "{}",
+                    "task_name": task_name_out,
                     "status": 1,
                     "creator": "mock",
                     "task_begin_time": time.time(),
                     "task_end_time": None,
                     "created_at": 0,
                     "updated_at": 0,
-                    "is_audit_log": 1,
-                    "task_template_id_list": [],
-                    "task_setup": {"subtype": None, "powder_100_30": False, "powder_30_100": False, "added_slots": ""},
-                    "unit_list": [],
+                    "scheme_list": scheme_list,
                 },
             },
         },
-    }
+    }).model_dump()
 
 
-def _fake_thermal_summary(step_info: str = "", task_name: Optional[str] = None) -> Dict[str, Any]:
+def _fake_thermal_summary(
+    step_info: str = "",
+    temperature_curve: Optional[List[Dict[str, float]]] = None,
+) -> Dict[str, Any]:
     """
     Mock 下热处理子流程 get_summary 的假数据，与 thermal_flow.get_summary() 及各 device.get_running_status() 结构一致。
-    真实返回：{"status": True, "summary": {"robot": ..., "oven": ..., "centrifuge": ...}}。
+    可传入 temperature_curve（由 llm_output 温度程序生成），否则使用默认曲线。
     """
+    curve = temperature_curve or [
+        {"time": 0.0, "temperature": 25.0},
+        {"time": 11.5, "temperature": 600.0},
+        {"time": 13.5, "temperature": 600.0},
+        {"time": 14.5, "temperature": 870.0},
+        {"time": 38.5, "temperature": 870.0},
+        {"time": 188.5, "temperature": 600.0},
+    ]
     return {
         "status": True,
         "summary": {
@@ -130,6 +272,7 @@ def _fake_thermal_summary(step_info: str = "", task_name: Optional[str] = None) 
                     "remain_time": 180,
                 },
             },
+            "temperature_curve": curve,
         },
     }
 
@@ -223,7 +366,7 @@ class ExperimentOrchestrator:
         获取当前阶段对应的子流程输出摘要，供用户查看。
         仅输出当前阶段所属子流程的 summary：mixing 只输出 mix，thermal 只输出 thermal，xrd 只输出 xrd；
         等待确认等阶段无对应子流程时返回空。
-        Mock 模式下返回与真实设备一致的假数据结构，便于前端调试 UI。
+        Mock 与真实设备返回的数据格式一致（如配料均为 summary.mixer.data 含 task_id、task_name、方案列表 等）。
         """
         phase = self._phase
         out: Dict[str, Any] = {}
@@ -233,20 +376,64 @@ class ExperimentOrchestrator:
             if _MOCK_DEVICES:
                 with self._lock:
                     task_name = self._task_name
-                out = _fake_mix_summary(step_info, task_name=task_name)
+                    mixer_data = self._mixer_model
+                out = _fake_mix_summary(step_info, task_name=task_name, mixer_data=mixer_data)
             else:
                 try:
-                    out = mix_flow_mgr.get_summary()
+                    raw_out = mix_flow_mgr.get_summary()
+                    # 真实设备：用 MixerSummaryResponse 做字段限制，与 mock 输出格式一致
+                    mixer_wrap = (raw_out.get("summary") or {}).get("mixer") or {}
+                    if isinstance(mixer_wrap, dict) and "data" in mixer_wrap:
+                        inner = mixer_wrap["data"]
+                        if hasattr(inner, "model_dump"):
+                            inner = inner.model_dump()
+                        elif not isinstance(inner, dict):
+                            inner = dict(inner) if inner else {}
+                        if isinstance(inner, dict):
+                            rows = _rows_from_mixer_data(inner)
+                            scheme_list = _merge_layout_by_scheme(rows) if rows else []
+                            out = MixerSummaryResponse(**{
+                                "status": True,
+                                "summary": {
+                                    "mixer": {
+                                        "status": mixer_wrap.get("status", "success"),
+                                        "data": {
+                                            "task_id": inner.get("task_id", 0),
+                                            "task_name": inner.get("task_name", ""),
+                                            "status": int(inner.get("status", 0)),
+                                            "creator": inner.get("creator", ""),
+                                            "task_begin_time": inner.get("task_begin_time"),
+                                            "task_end_time": inner.get("task_end_time"),
+                                            "created_at": int(inner.get("created_at", 0)),
+                                            "updated_at": int(inner.get("updated_at", 0)),
+                                            "scheme_list": scheme_list,
+                                        },
+                                    },
+                                },
+                            }).model_dump()
+                        else:
+                            out = raw_out
+                    else:
+                        out = raw_out
                 except Exception as e:
                     out = {"status": False, "message": str(e), "summary": {}}
         elif phase == ExperimentPhase.THERMAL_RUNNING:
             if _MOCK_DEVICES:
-                with self._lock:
-                    task_name = self._task_name
-                out = _fake_thermal_summary(step_info, task_name=task_name)
+                curve_points = self._thermal_params.get("curve_points")
+                out = _fake_thermal_summary(step_info, temperature_curve=curve_points)
             else:
                 try:
                     out = thermal_flow_mgr.get_summary()
+                    # 真实设备：附加当前炉温曲线（时间、温度 JSON 数组），来自 thermal_params.curve_points
+                    curve_points = self._resolve_thermal_curve_points()
+                    if curve_points and out.get("summary") is not None:
+                        out.setdefault("summary", {})["temperature_curve"] = [
+                            {
+                                "time": getattr(p, "time", p.get("time", 0.0) if isinstance(p, dict) else 0.0),
+                                "temperature": getattr(p, "temperature", p.get("temperature", 0.0) if isinstance(p, dict) else 0.0),
+                            }
+                            for p in curve_points
+                        ]
                 except Exception as e:
                     out = {"status": False, "message": str(e), "summary": {}}
         elif phase == ExperimentPhase.ERROR:
@@ -540,7 +727,8 @@ class ExperimentOrchestrator:
 
     def start(
         self,
-        mixer_model: Any,
+        raw_req: StartExperimentRequest,
+        mixer_model: AddTaskRequest,
         thermal_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -562,6 +750,11 @@ class ExperimentOrchestrator:
             self._experiment_id = str(uuid.uuid4())
             self._task_name = getattr(mixer_model, "task_name", None)
             self._phase = ExperimentPhase.IDLE
+            # 原始请求（供后续总结使用，原始请求中包含各个方案的名称，而解析后的mixer_model不包含方案名称）
+            self._raw_req = raw_req
+            # 配料数据
+            self._mixer_model = mixer_model
+            # 工艺数据
             self._thermal_params = thermal_params.copy() if thermal_params else None
             self._error_message = None
             self._step_info = ""
