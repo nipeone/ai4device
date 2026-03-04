@@ -6,16 +6,24 @@
   从中提取原料 -> AddTaskRequest、温度程序 -> List[CurvePoint]，并可选炉号/数量。
 - POST /flux/from_excel：兼容旧版，上传 Excel 解析为配料任务（无温度曲线，曲线由 confirm_thermal_load 或默认提供）。
 
+大模型输出 -> 配方表（与 配方-0122.xlsx 结构一致，不启动实验）：
+- POST /recipe-from-llm：入参同 /flux，返回 JSON（rows 为每行配方的 name/weight_mg 列表）。
+- POST /recipe-from-llm/excel：入参同 /flux，返回 Excel 文件下载。
+
 流程节点：
   配料、熔封 -> [等待熔封确认] -> 上料 -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
 """
+import io
+from datetime import datetime
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from flows.experiment_flow import experiment_orchestrator
 from services.mixer import mixer_service
+from services.mixer import add_task_request_to_recipe_rows, add_task_request_to_excel_bytes
 from services.experiment_input import (
     llm_output_to_add_task_request,
     llm_output_to_curve_points,
@@ -73,6 +81,61 @@ async def start_experiment(req: StartExperimentRequest):
                 "phase_label": st.phase_label,
             },
         )
+
+
+@router.post("/recipe-from-llm", tags=["实验"])
+async def llm_output_to_recipe_format(req: StartExperimentRequest):
+    """
+    将大模型规范输出转为与「配方 Excel」一致的数据格式（JSON），不启动实验。
+
+    返回结构：每行一个配方，行内为 [{"name": "【SSSI】物质名或物质名", "weight_mg": 数值}, ...]，
+    与 docs/配方-0122.xlsx 的表格结构对应，便于预览或再导入。
+    """
+    try:
+        add_task = llm_output_to_add_task_request(req)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(e)},
+        )
+    rows = add_task_request_to_recipe_rows(add_task)
+    # 转为可 JSON 序列化的结构
+    out = [
+        [{"name": name, "weight_mg": round(w, 2)} for name, w in row]
+        for row in rows
+    ]
+    return {
+        "status": "ok",
+        "task_name": add_task.task_name,
+        "rows": out,
+        "description": "每行对应一个配方，与配方 Excel 行结构一致；name 含【SSSI】时与 Excel 中【SSSI】名称一致",
+    }
+
+
+@router.post("/recipe-from-llm/excel", tags=["实验"])
+async def llm_output_to_recipe_excel(req: StartExperimentRequest):
+    """
+    将大模型规范输出转为与「配方 Excel」一致的文件并下载，不启动实验。
+
+    表格结构：每行一个配方，列为成对的「物质名」「重量(mg)」，与 配方-0122.xlsx 类似。
+    """
+    try:
+        add_task = llm_output_to_add_task_request(req)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(e)},
+        )
+    excel_bytes = add_task_request_to_excel_bytes(add_task)
+    # 文件名可能含中文，需用 RFC 5987 编码，避免 Content-Disposition 头 latin-1 报错
+    raw_name = (add_task.task_name or "export").strip() or "export"
+    safe_ascii = f"recipe_{datetime.now().strftime('%Y%m%d%H%M')}.xlsx"
+    disp_value = f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(f'recipe_{raw_name}.xlsx', safe='')}"
+    return StreamingResponse(
+        io.BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": disp_value},
+    )
 
 
 @router.post("/flux/from_excel", tags=["实验"])
