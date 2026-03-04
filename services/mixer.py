@@ -33,6 +33,9 @@ SSSI_SUBSTANCE_MAP = {
     "2-00-29-3": "Na",
     "2-00-30-6": "NaCl",
     "2-00-31-7": "S",
+    "2-00-32-8": "Sn",
+    "2-00-33-9": "Zn",
+    "2-00-34-0": "LiCl"
 }
 
 def get_sssi_by_substance(name: str) -> str:
