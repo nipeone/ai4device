@@ -15,7 +15,7 @@ from services.mixer import add_task_request_to_excel_bytes
 
 
 def main():
-    json_path = ROOT / "data" / "llm_output.json"
+    json_path = ROOT / "data" / "output_result-AlInS3-0303.json"
     out_path = ROOT / "recipe_from_llm_output.xlsx"
 
     with open(json_path, "r", encoding="utf-8") as f:

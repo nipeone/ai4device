@@ -252,6 +252,16 @@ def _parse_flux_from_info(助熔剂信息: str) -> Optional[str]:
     return s if s else None
 
 
+def _normalize_substance_for_compare(name: str) -> str:
+    """物质名规范化后用于比较（自助熔剂与原料是否同种）：去空格、首字母大写其余小写（便于 In/in 一致）。"""
+    if not name:
+        return ""
+    s = name.strip()
+    if len(s) <= 2:
+        return s[0].upper() + (s[1:].lower() if len(s) > 1 else "")
+    return s
+
+
 def _main_and_flux_weights(
     main_substances: List[str],
     molar_ratios: List[float],
@@ -420,12 +430,23 @@ def llm_output_to_add_task_request(
             flux_mass_g = 0.0
             weights = molar_ratios_to_mass_weights(substances, molar_ratios, total_weight)
 
+        # 自助熔剂：助熔剂与某原料为同种物质时合并为一行，不再单独追加
+        flux_merge_idx: Optional[int] = None
+        if flux_substance and flux_mass_g > 0:
+            fn = _normalize_substance_for_compare(flux_substance)
+            for i, s in enumerate(substances):
+                if _normalize_substance_for_compare(s) == fn:
+                    flux_merge_idx = i
+                    break
+
         for row_idx, substance in enumerate(substances):
             if check_chemical:
                 exists, chemical_id, sssi = check_chemical_exists(substance)
                 if not exists:
                     raise ValueError(f"化学品 {substance} 不存在，请先添加化学品")
             add_weight_g = weights[row_idx] if row_idx < len(weights) else 0.0
+            if row_idx == flux_merge_idx:
+                add_weight_g += flux_mass_g
             add_weight_mg = round(add_weight_g * G_PER_MG, 2)
             process_json = ProcessJson(
                 resource_type="CC10R10C",
@@ -451,8 +472,8 @@ def llm_output_to_add_task_request(
             )
             layout_list.append(layout_item)
 
-        # 助熔剂：已在上面与原料一起按「原料+助熔剂=total_weight」分配，此处仅追加一行
-        if flux_substance is not None and flux_mass_g > 0:
+        # 助熔剂：若未与原料合并（非自助熔剂），则追加一行
+        if flux_substance is not None and flux_mass_g > 0 and flux_merge_idx is None:
                 if check_chemical:
                     exists, chemical_id, sssi = check_chemical_exists(flux_substance)
                     if not exists:
