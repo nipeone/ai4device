@@ -14,7 +14,7 @@ from services.experiment_input import llm_output_to_curve_points, get_selected_s
 
 
 def main():
-    json_path = ROOT / "data" / "output_result-AlInS3-0303.json"
+    json_path = ROOT / "data" / "output_result-AlInSe3-0303.json"
 
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
