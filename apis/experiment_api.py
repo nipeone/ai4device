@@ -10,6 +10,9 @@
 - POST /recipe-from-llm：入参同 /flux，返回 JSON（rows 为每行配方的 name/weight_mg 列表）。
 - POST /recipe-from-llm/excel：入参同 /flux，返回 Excel 文件下载。
 
+大模型输出 -> 温度曲线（不启动实验）：
+- POST /temperature-from-llm：入参同 /flux，返回 JSON（取第一个方案的 工艺参数.温度程序 转成的 curve_points 及原始温度程序字段）。
+
 流程节点：
   配料、熔封 -> [等待熔封确认] -> 上料 -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
 """
@@ -28,6 +31,7 @@ from services.experiment_input import (
     llm_output_to_add_task_request,
     llm_output_to_curve_points,
     get_sample_manifest,
+    get_selected_scheme,
 )
 from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest
 from schemas.llm_output import StartExperimentRequest
@@ -81,6 +85,35 @@ async def start_experiment(req: StartExperimentRequest):
                 "phase_label": st.phase_label,
             },
         )
+
+
+@router.post("/temperature-from-llm", tags=["实验"])
+async def llm_output_to_temperature_format(req: StartExperimentRequest):
+    """
+    将大模型规范输出中的温度程序转为加热炉曲线数据（JSON），不启动实验。
+
+    取 推荐实验方案列表 中第一个方案的 工艺参数.温度程序，生成 curve_points（温度℃、时间h），
+    并返回原始温度程序字段便于核对。时间单位为小时（累积），最后一点 temperature=-121 表示结束。
+    """
+    try:
+        scheme = get_selected_scheme(req)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(e)},
+        )
+    curve_points = llm_output_to_curve_points(req)
+    recipe = scheme.工艺参数
+    temperature_program = (
+        recipe.温度程序.model_dump(by_alias=True) if recipe and recipe.温度程序 else None
+    )
+    return {
+        "status": "ok",
+        "scheme_id": (scheme.方案ID or "").strip() or "方案0",
+        "curve_points": [{"temperature": p.temperature, "time": p.time} for p in curve_points],
+        "temperature_program": temperature_program,
+        "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
+    }
 
 
 @router.post("/recipe-from-llm", tags=["实验"])
