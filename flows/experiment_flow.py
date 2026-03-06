@@ -24,15 +24,20 @@ from schemas.experiment import (
     ExperimentStatusResponse,
     PHASE_LABELS,
     XRDResultData,
+    SampleAssignment,
 )
 
 from flows.mix_flow import mix_flow_mgr
 from flows.thermal_flow import thermal_flow_mgr
 from flows.xrd_flow import xrd_flow_mgr
 from services.oven import oven_service
-from services.experiment_input import llm_output_to_add_task_request
+from services.experiment_input import (
+    llm_output_to_add_task_request,
+    llm_output_to_curve_points_for_scheme_index,
+)
 from schemas.mixer import AddTaskRequest, MixerSummaryResponse
 from schemas.llm_output import StartExperimentRequest
+from services import experiment_persistence
 try:
     import config
     _MOCK_DEVICES = getattr(config, "MOCK_DEVICES", False)
@@ -62,7 +67,7 @@ def _merge_layout_by_scheme(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for col in sorted(by_col.keys()):
         group = sorted(by_col[col], key=lambda x: x.get("unit_row", 0))
         scheme_name = (group[0].get("scheme_name") or f"scheme{col}").strip() if group else f"scheme{col}"
-        ingredients = [{"substance": r.get("substance", ""), "weight": float(r.get("weight", r.get("add_weight", 0)) or 0)} for r in group]
+        ingredients = [{"substance": r.get("substance", ""), "weight": float(r.get("weight", r.get("add_weight", 0)) or 0), "unit": r.get("unit", "mg")} for r in group]
         scheme_list.append({"scheme_name": scheme_name, "ingredients": ingredients})
     return scheme_list
 
@@ -320,6 +325,7 @@ class ExperimentOrchestrator:
         self._task_name: Optional[str] = None
         self._error_message: Optional[str] = None
         self._thermal_params: Optional[Dict[str, Any]] = None
+        self._xrd_params: Optional[Dict[str, Any]] = None
         self._runner_thread: Optional[threading.Thread] = None
 
         # 各阶段恢复事件
@@ -333,7 +339,6 @@ class ExperimentOrchestrator:
         # 用户请求停止（stop() 置 True，start() 清空）
         self._stop_requested = False
         # 实验成功完成时的 XRD 结果：单试管用 _last_result，多试管用 _last_results（每项含 scheme_id 关联配方）
-        self._last_result: Optional[Dict[str, Any]] = None
         self._last_results: Optional[list] = None
 
     def _set_phase(
@@ -348,6 +353,13 @@ class ExperimentOrchestrator:
                 self._step_info = step_info
             if error_message is not None:
                 self._error_message = error_message
+        if self._experiment_id:
+            try:
+                experiment_persistence.update_experiment_phase(
+                    self._experiment_id, phase.value, error_message
+                )
+            except Exception as e:
+                logger.log(f"持久化实验阶段失败: {e}", "WARN")
 
     def _get_step_info_from_flows(self) -> str:
         """从当前活跃子流程取步骤信息"""
@@ -562,16 +574,36 @@ class ExperimentOrchestrator:
             if self._stop_requested:
                 self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
                 return
-            params = self._thermal_params or {}
-            oven_id = int(params.get("oven_id", 1))
-            qty = int(params.get("qty", 1))
-            curve_points = self._resolve_thermal_curve_points()
+            thermal_params = self._thermal_params or {}
+            oven_assignments = thermal_params.get("oven_assignments") or []
+            use_multi_oven = (
+                isinstance(oven_assignments, list)
+                and len(oven_assignments) > 0
+                and getattr(self._raw_req, "推荐实验方案列表", None) is not None
+            )
             self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中" + (" [Mock]" if mock else ""))
             if mock:
                 logger.log("Mock 热处理：模拟执行 30～60 秒", "INFO")
                 self._mock_sleep_with_stop_check(MOCK_STEP_DURATION_MIN, MOCK_STEP_DURATION_MAX)
                 thermal_result = {"status": True, "message": "mock 热处理完成"}
+            elif use_multi_oven:
+                thermal_result = {"status": True, "message": "多炉热处理完成"}
+                for assign in oven_assignments:
+                    if self._stop_requested:
+                        thermal_result = {"status": False, "message": "用户停止实验"}
+                        break
+                    oven_id = int(assign.get("oven_id", 0))
+                    scheme_idx = int(assign.get("scheme_index", 0))
+                    qty = int(assign.get("qty", 1))
+                    curve_points = llm_output_to_curve_points_for_scheme_index(self._raw_req, scheme_idx)
+                    one = thermal_flow_mgr.run(oven_id, qty, curve_points)
+                    if not one.get("status"):
+                        thermal_result = {"status": False, "message": one.get("message", "热处理失败")}
+                        break
             else:
+                oven_id = int(thermal_params.get("oven_id", 1))
+                qty = int(thermal_params.get("qty", 1))
+                curve_points = self._resolve_thermal_curve_points()
                 thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
             if not thermal_result.get("status"):
                 self._set_phase(
@@ -601,35 +633,59 @@ class ExperimentOrchestrator:
             if self._stop_requested:
                 self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
                 return
-            sample_manifest = (params.get("sample_manifest") or []) if isinstance(params.get("sample_manifest"), list) else []
-            if not sample_manifest:
-                sample_manifest = [{"scheme_index": 0, "scheme_id": "方案0", "scheme_type": ""}]
+            scheme_manifest = (thermal_params.get("scheme_manifest") or []) if isinstance(thermal_params.get("scheme_manifest"), list) else []
+            if not scheme_manifest:
+                scheme_manifest = [{"scheme_index": 0, "scheme_id": "方案0", "scheme_type": ""}]
+            
+            xrd_params = self._xrd_params or {}
+            sample_assignments: List[SampleAssignment] = xrd_params.get("sample_assignments")
+            # 为每个样品生成唯一 sample_id：scheme_id + 短 UUID，支持一方案多样品
+            def _sample_id_for(scheme_id: str) -> str:
+                return f"{scheme_id or '方案'}_{uuid.uuid4().hex[:6]}"
+            sample_ids = []
+            if sample_assignments:
+                for scheme_idx, scheme in enumerate(scheme_manifest):
+                    scheme_id = scheme.get("scheme_id", f"方案{scheme_idx}")
+                    qty = 1
+                    for assign in sample_assignments:
+                        if assign.scheme_index == scheme_idx:
+                            qty = int(assign.qty)
+                    sample_ids.extend([_sample_id_for(scheme_id) for _ in range(qty)])
+            else:
+                sample_ids = [_sample_id_for(m.get("scheme_id", f"方案{i}")) for i, m in enumerate(scheme_manifest)]
+                    
             self._set_phase(ExperimentPhase.XRD_RUNNING, "XRD测试执行中" + (" [Mock]" if mock else ""))
+
+
+            start_theta = xrd_params.get("start_theta", 5.0)
+            end_theta = xrd_params.get("end_theta", 120.0)
+            increment = xrd_params.get("increment", 0.01)
+            exp_time = xrd_params.get("exp_time", 0.1)
             if mock:
                 logger.log("Mock XRD 测试：模拟执行 30～60 秒", "INFO")
                 self._mock_sleep_with_stop_check(MOCK_STEP_DURATION_MIN, MOCK_STEP_DURATION_MAX)
                 xrd_result = {"status": True, "message": "mock XRD 完成"}
             else:
-                if len(sample_manifest) == 1:
+                if len(scheme_manifest) == 1:
                     xrd_result = xrd_flow_mgr.run(
                         single=True,
-                        sample_id=sample_manifest[0].get("scheme_id", "XY000"),
-                        start_theta=5.0,
-                        end_theta=120.0,
-                        increment=0.01,
-                        exp_time=0.1,
+                        sample_id=sample_ids[0],
+                        start_theta=start_theta,
+                        end_theta=end_theta,
+                        increment=increment,
+                        exp_time=exp_time,
                     )
                 else:
                     samples = [
                         {
-                            "sample_id": m.get("scheme_id", f"方案{i}"),
-                            "start_theta": 5.0,
-                            "end_theta": 120.0,
-                            "increment": 0.01,
-                            "exp_time": 0.1,
+                            "sample_id": sample_id,
+                            "start_theta": start_theta,
+                            "end_theta": end_theta,
+                            "increment": increment,
+                            "exp_time": exp_time,
                             "station": i + 1,
                         }
-                        for i, m in enumerate(sample_manifest)
+                        for sample_id in sample_ids
                     ]
                     xrd_result = xrd_flow_mgr.run(single=False, samples=samples)
             if not (isinstance(xrd_result, dict) and xrd_result.get("status")):
@@ -640,24 +696,26 @@ class ExperimentOrchestrator:
                 )
                 self._set_phase(ExperimentPhase.ERROR, error_message=msg)
                 return
-            # 实验成功完成：从 XRD 流程获取数据，按配方（scheme_id）关联保存，供大模型按配方总结
+            # 实验成功完成：从 XRD 流程获取数据，按配方（scheme_id）关联保存，带 experiment_id/scheme_id/sample_id 供关联查询
+            exp_id = self._experiment_id or ""
             if mock:
                 with self._lock:
-                    if len(sample_manifest) == 1:
-                        self._last_result = {
-                            "sample_id": "mock",
-                            "scheme_id": sample_manifest[0].get("scheme_id"),
-                            "scheme_index": sample_manifest[0].get("scheme_index"),
-                            "scheme_type": sample_manifest[0].get("scheme_type", ""),
+                    if len(scheme_manifest) == 1:
+                        self._last_results = [{
+                            "experiment_id": exp_id,
+                            "sample_id": sample_ids[0],
+                            "scheme_id": scheme_manifest[0].get("scheme_id"),
+                            "scheme_index": scheme_manifest[0].get("scheme_index"),
+                            "scheme_type": scheme_manifest[0].get("scheme_type", ""),
                             "theta2": [],
                             "intensity": [],
                             "timestamp": None,
-                        }
-                        self._last_results = None
+                        }]
                     else:
                         self._last_results = [
                             {
-                                "sample_id": "mock",
+                                "experiment_id": exp_id,
+                                "sample_id": sample_ids[i],
                                 "scheme_id": m.get("scheme_id"),
                                 "scheme_index": m.get("scheme_index"),
                                 "scheme_type": m.get("scheme_type", ""),
@@ -665,40 +723,39 @@ class ExperimentOrchestrator:
                                 "intensity": [],
                                 "timestamp": None,
                             }
-                            for m in sample_manifest
+                            for i, m in enumerate(scheme_manifest)
                         ]
-                        self._last_result = self._last_results[0] if self._last_results else None
             else:
                 try:
-                    if len(sample_manifest) == 1:
+                    if len(scheme_manifest) == 1:
                         latest = xrd_flow_mgr.get_latest_data()
                         if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
                             d = latest.get("data")
                             with self._lock:
-                                self._last_result = {
-                                    "sample_id": d.get("sample_id"),
-                                    "scheme_id": sample_manifest[0].get("scheme_id"),
-                                    "scheme_index": sample_manifest[0].get("scheme_index"),
-                                    "scheme_type": sample_manifest[0].get("scheme_type", ""),
+                                self._last_results = [{
+                                    "experiment_id": exp_id,
+                                    "sample_id": d.get("sample_id") or sample_ids[0],
+                                    "scheme_id": scheme_manifest[0].get("scheme_id"),
+                                    "scheme_index": scheme_manifest[0].get("scheme_index"),
+                                    "scheme_type": scheme_manifest[0].get("scheme_type", ""),
                                     "theta2": d.get("theta2"),
                                     "intensity": d.get("intensity"),
                                     "timestamp": d.get("timestamp"),
-                                }
-                                self._last_results = None
+                                }]
                         else:
                             with self._lock:
-                                self._last_result = None
-                                self._last_results = None
+                                self._last_results = []
                     else:
                         xrd_results = xrd_result.get("results") or []
                         built = []
                         for i, r in enumerate(xrd_results):
-                            m = sample_manifest[i] if i < len(sample_manifest) else {}
+                            m = scheme_manifest[i] if i < len(scheme_manifest) else {}
                             data = r.get("data") or {}
                             theta2 = data.get("2theta") or data.get("theta2")
                             intensity = data.get("intensity")
                             built.append({
-                                "sample_id": r.get("sample_id") or m.get("scheme_id"),
+                                "experiment_id": exp_id,
+                                "sample_id": r.get("sample_id") or (sample_ids[i] if i < len(sample_ids) else m.get("scheme_id")),
                                 "scheme_id": m.get("scheme_id"),
                                 "scheme_index": m.get("scheme_index"),
                                 "scheme_type": m.get("scheme_type", ""),
@@ -708,12 +765,19 @@ class ExperimentOrchestrator:
                             })
                         with self._lock:
                             self._last_results = built
-                            self._last_result = built[0] if built else None
                 except Exception as e:
                     logger.log(f"保存XRD结果时忽略异常: {e}", "WARN")
                     with self._lock:
-                        self._last_result = None
-                        self._last_results = None
+                        self._last_results = []
+            with self._lock:
+                to_persist = (
+                    self._last_results if self._last_results else []
+                )
+            if exp_id and to_persist:
+                try:
+                    experiment_persistence.insert_xrd_results(exp_id, to_persist)
+                except Exception as e:
+                    logger.log(f"持久化XRD结果失败: {e}", "WARN")
             self._set_phase(ExperimentPhase.COMPLETED, "实验流程已全部完成")
             logger.log("实验总流程完成", "SUCCESS")
         except Exception as e:
@@ -759,8 +823,18 @@ class ExperimentOrchestrator:
             self._error_message = None
             self._step_info = ""
             self._stop_requested = False
-            self._last_result = None
             self._last_results = None
+
+        try:
+            manifest = (self._thermal_params or {}).get("scheme_manifest") if isinstance((self._thermal_params or {}).get("scheme_manifest"), list) else None
+            experiment_persistence.insert_experiment(
+                self._experiment_id,
+                task_name=self._task_name,
+                scheme_manifest=manifest,
+                thermal_params=self._thermal_params,
+            )
+        except Exception as e:
+            logger.log(f"持久化实验记录失败: {e}", "WARN")
 
         logger.log(
             f"实验启动，任务名称: {self._task_name}，experiment_id: {self._experiment_id}",
@@ -791,8 +865,10 @@ class ExperimentOrchestrator:
             experiment_id = self._experiment_id or "none"
             task_name = self._task_name
             error_message = self._error_message
-            last_result = self._last_result
             last_results = self._last_results
+            manifest = (self._thermal_params or {}).get("scheme_manifest") if isinstance((self._thermal_params or {}).get("scheme_manifest"), list) else []
+        # scheme_ids = [m.get("scheme_id") for m in manifest if m and m.get("scheme_id")] if manifest else None
+        scheme_manifest = manifest if manifest else None
         step_info = self._get_step_info_from_flows()
         sub_flow_summaries = self._get_sub_flow_summaries()
 
@@ -809,16 +885,10 @@ class ExperimentOrchestrator:
             if phase == ExperimentPhase.XRD_RUNNING else None
         )
         result = None
-        results = None
         try:
-            if isinstance(last_results, list) and len(last_results) > 0:
-                results = [XRDResultData(**item) for item in last_results]
-                result = results[0] if results else None
-            elif isinstance(last_result, dict) and last_result:
-                result = XRDResultData(**last_result)
+            result = [XRDResultData(**item) for item in last_results] if last_results else None
         except Exception:
             result = None
-            results = None
 
         return ExperimentStatusResponse(
             experiment_id=experiment_id,
@@ -831,8 +901,8 @@ class ExperimentOrchestrator:
             sub_flow_summaries=sub_flow_summaries if sub_flow_summaries else None,
             error_message=error_message,
             task_name=task_name,
-            result=result,
-            results=results,
+            scheme_manifest=scheme_manifest,
+            result=result
         )
 
     def confirm_seal(self) -> None:
@@ -846,29 +916,57 @@ class ExperimentOrchestrator:
         qty: Optional[int] = None,
         curve_name: Optional[str] = None,
         curve_points: Optional[list] = None,
+        oven_assignments: Optional[list] = None,
     ) -> None:
-        """确认样品已放入加热炉，可选传入热处理参数；与 start 时的 thermal_params 合并。未传的 oven_id/qty 沿用启动时的值。"""
+        """确认样品已放入加热炉，可选传入热处理参数；与 start 时的 thermal_params 合并。
+        若传 oven_assignments（多炉分配），则按炉按 scheme_index 取曲线执行；否则沿用单炉 oven_id/qty/curve_points。"""
         with self._lock:
             prev = self._thermal_params or {}
-            self._thermal_params = {
+            params = {
                 "oven_id": oven_id if oven_id is not None else prev.get("oven_id", 1),
                 "qty": qty if qty is not None else prev.get("qty", 1),
                 "curve_name": curve_name or prev.get("curve_name"),
                 "curve_points": curve_points if curve_points is not None else prev.get("curve_points"),
-                "sample_manifest": prev.get("sample_manifest"),
+                "scheme_manifest": prev.get("scheme_manifest"),
             }
+            if oven_assignments is not None:
+                params["oven_assignments"] = [
+                    {"oven_id": a.get("oven_id"), "scheme_index": a.get("scheme_index"), "qty": a.get("qty")}
+                    for a in oven_assignments
+                    if isinstance(a, dict) and "oven_id" in a and "scheme_index" in a and "qty" in a
+                ] if isinstance(oven_assignments, list) else []
+            else:
+                params["oven_assignments"] = prev.get("oven_assignments")
+            self._thermal_params = params
         self._thermal_load_confirm.set()
         logger.log("加热炉上料确认已接收", "INFO")
 
-    def confirm_xrd_ready(self) -> None:
-        """确认样品已放入 XRD 试验台"""
+    def confirm_xrd_ready(self, 
+        start_theta: Optional[float] = None, 
+        end_theta: Optional[float] = None, 
+        increment: Optional[float] = None, 
+        exp_time: Optional[float] = None,
+        sample_assignments: Optional[list] = None) -> None:
+        """确认样品已放入 XRD 试验台，可选传入 XRD 测试参数；与 start 时的 xrd_params 合并。
+        若传 sample_assignments（样品数量分配），则按 scheme_index 取样品制备数量执行；否则沿用默认值。"""
+        with self._lock:
+            prev = self._xrd_params or {}
+            params = {
+                "start_theta": start_theta if start_theta is not None else prev.get("start_theta", 5.0),
+                "end_theta": end_theta if end_theta is not None else prev.get("end_theta", 120.0),
+                "increment": increment if increment is not None else prev.get("increment", 0.01),
+                "exp_time": exp_time if exp_time is not None else prev.get("exp_time", 0.1),
+                "sample_assignments": sample_assignments if sample_assignments is not None else prev.get("sample_assignments"),
+            }
+            self._xrd_params = params
         self._xrd_ready_confirm.set()
         logger.log("XRD上样确认已接收", "INFO")
 
     def stop(self) -> bool:
         """
         请求停止当前实验。若正在运行或处于等待确认阶段，将置位停止标志并唤醒等待，
-        后台线程会在下一轮检查时退出并将 phase 置为 ERROR（error_message="用户停止实验"）。
+        并立即将 phase 置为 ERROR，使 get_status() 立刻显示「用户停止实验」；
+        后台线程会在下一轮检查时退出。
         返回 True 表示已发出停止请求，False 表示当前无实验在跑。
         """
         with self._lock:
@@ -879,9 +977,11 @@ class ExperimentOrchestrator:
             ) and not self._runner_thread:
                 return False
             self._stop_requested = True
+        self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
         self._seal_confirm.set()
         self._thermal_load_confirm.set()
         self._xrd_ready_confirm.set()
+        mix_flow_mgr.stop()
         thermal_flow_mgr.stop()
         xrd_flow_mgr.stop()
         logger.log("已请求停止实验", "WARN")

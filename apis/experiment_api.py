@@ -24,16 +24,21 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from fastapi import Query
+
 from flows.experiment_flow import experiment_orchestrator
 from services.mixer import mixer_service
+from services import experiment_persistence
 from services.mixer import add_task_request_to_recipe_rows, add_task_request_to_excel_bytes
 from services.experiment_input import (
     llm_output_to_add_task_request,
     llm_output_to_curve_points,
-    get_sample_manifest,
+    llm_output_to_curve_points_for_scheme_index,
+    get_scheme_manifest,
     get_selected_scheme,
+    get_schemes,
 )
-from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest
+from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest, XRDParamsRequest
 from schemas.llm_output import StartExperimentRequest
 
 from logger import sys_logger as logger
@@ -41,7 +46,7 @@ from logger import sys_logger as logger
 router = APIRouter(prefix="/api/experiment", tags=["实验"])
 
 
-@router.post("/flux", tags=["实验"])
+@router.post("/start", tags=["实验"])
 async def start_experiment(req: StartExperimentRequest):
     """
     使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
@@ -54,7 +59,7 @@ async def start_experiment(req: StartExperimentRequest):
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     """
     try:
-        sample_manifest = get_sample_manifest(req)
+        scheme_manifest = get_scheme_manifest(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
@@ -62,16 +67,17 @@ async def start_experiment(req: StartExperimentRequest):
         )
     add_task = llm_output_to_add_task_request(req)
     curve_points = llm_output_to_curve_points(req)
-    logger.info(f"add_task: {add_task}, sample_manifest: {len(sample_manifest)} tube(s)")
+    logger.info(f"add_task: {add_task}, scheme_manifest: {len(scheme_manifest)} tube(s)")
     logger.info(f"curve_points: {curve_points}")
     thermal_params = {
         "oven_id": 3,
-        "qty": len(sample_manifest),
+        "qty": len(scheme_manifest),
         "curve_points": [p.model_dump() for p in curve_points],
-        "sample_manifest": sample_manifest,
+        "scheme_manifest": scheme_manifest,
     }
     try:
         result = experiment_orchestrator.start(req, add_task, thermal_params)
+        result["scheme_manifest"] = scheme_manifest
         return result
     except ValueError as e:
         st = experiment_orchestrator.get_status()
@@ -83,6 +89,7 @@ async def start_experiment(req: StartExperimentRequest):
                 "experiment_id": st.experiment_id,
                 "phase": st.phase.value,
                 "phase_label": st.phase_label,
+                "scheme_manifest": st.scheme_manifest,
             },
         )
 
@@ -96,25 +103,28 @@ async def llm_output_to_temperature_format(req: StartExperimentRequest):
     并返回原始温度程序字段便于核对。时间单位为小时（累积），最后一点 temperature=-121 表示结束。
     """
     try:
-        scheme = get_selected_scheme(req)
+        schemes = get_schemes(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
             content={"status": "error", "message": str(e)},
         )
-    curve_points = llm_output_to_curve_points(req)
-    recipe = scheme.工艺参数
-    temperature_program = (
-        recipe.温度程序.model_dump(by_alias=True) if recipe and recipe.温度程序 else None
-    )
-    return {
-        "status": "ok",
-        "scheme_id": (scheme.方案ID or "").strip() or "方案0",
-        "curve_points": [{"temperature": p.temperature, "time": p.time} for p in curve_points],
-        "temperature_program": temperature_program,
-        "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
+    for scheme_index, scheme in enumerate(schemes):
+        curve_points = llm_output_to_curve_points_for_scheme_index(req, scheme_index)
+        temperature_program = (
+            scheme.工艺参数.温度程序.model_dump(by_alias=True) if scheme.工艺参数 and scheme.工艺参数.温度程序 else None
+        )
+    return {"status": "success", 
+            "schemes": [
+            {
+                
+                "scheme_id": (scheme.方案ID or "").strip() or "方案0",
+                "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(req, scheme_index)],
+                "temperature_program": scheme.工艺参数.温度程序.model_dump(by_alias=True) if scheme.工艺参数 and scheme.工艺参数.温度程序 else None,
+                "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
+            }
+            for scheme_index, scheme in enumerate(schemes)]
     }
-
 
 @router.post("/recipe-from-llm", tags=["实验"])
 async def llm_output_to_recipe_format(req: StartExperimentRequest):
@@ -133,15 +143,12 @@ async def llm_output_to_recipe_format(req: StartExperimentRequest):
         )
     rows = add_task_request_to_recipe_rows(add_task)
     # 转为可 JSON 序列化的结构
-    out = [
-        [{"name": name, "weight_mg": round(w, 2)} for name, w in row]
-        for row in rows
-    ]
+    out = [[{"name": name, "weight": round(w, 2), "unit": unit} for name, w, unit in row] for row in rows]
     return {
-        "status": "ok",
+        "status": "success",
         "task_name": add_task.task_name,
-        "rows": out,
-        "description": "每行对应一个配方，与配方 Excel 行结构一致；name 含【SSSI】时与 Excel 中【SSSI】名称一致",
+        "schemas": out,
+        "description": "每个schema对应一个配方，与配方 Excel 行结构一致；name 含【SSSI】时与 Excel 中【SSSI】名称一致",
     }
 
 
@@ -171,7 +178,7 @@ async def llm_output_to_recipe_excel(req: StartExperimentRequest):
     )
 
 
-@router.post("/flux/from_excel", tags=["实验"])
+@router.post("/from_excel", tags=["实验"])
 async def start_experiment_from_excel(file: UploadFile = File(...)):
     """
     兼容旧版：上传 Excel 启动实验，仅解析配料任务；温度曲线由 confirm_thermal_load 传入曲线名或使用默认。
@@ -195,6 +202,7 @@ async def start_experiment_from_excel(file: UploadFile = File(...)):
                 "experiment_id": st.experiment_id,
                 "phase": st.phase.value,
                 "phase_label": st.phase_label,
+                "scheme_manifest": getattr(st, "scheme_manifest", None),
             },
         )
 
@@ -210,34 +218,75 @@ def get_experiment_status():
     return experiment_orchestrator.get_status()
 
 
-@router.post("/flux/confirm_seal", tags=["实验"])
+@router.get("/history", tags=["实验"])
+def list_experiments(
+    limit: int = Query(50, ge=1, le=200, description="返回条数"),
+    offset: int = Query(0, ge=0, description="偏移"),
+):
+    """
+    分页查询历史实验列表（持久化数据），按创建时间倒序。
+    程序重启后仍可查询到已持久化的实验记录。
+    """
+    items = experiment_persistence.list_experiments(limit=limit, offset=offset)
+    return {"status": "success", "total": len(items), "items": items}
+
+
+@router.get("/record/{experiment_id}", tags=["实验"])
+def get_experiment_by_id(experiment_id: str):
+    """
+    按 experiment_id 查询单条实验详情（持久化数据），含 scheme_manifest、thermal_params 及该实验的全部 XRD 结果。
+    程序重启后仍可查询。
+    """
+    row = experiment_persistence.get_experiment(experiment_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"实验不存在: {experiment_id}")
+    results = experiment_persistence.get_xrd_results(experiment_id)
+    return {"status": "success", "experiment": row, "xrd_results": results}
+
+
+@router.post("/confirm_seal", tags=["实验"])
 def confirm_flux_seal():
     """人工或 Agent 确认熔封已完成，流程将继续到「等待加热炉上料」阶段。"""
     experiment_orchestrator.confirm_seal()
     return {"message": "熔封确认已接收，流程继续"}
 
 
-@router.post("/flux/confirm_thermal_load", tags=["实验"])
-def confirm_thermal_load(body: Optional[ThermalParamsRequest] = None):
+@router.post("/confirm_thermal_load", tags=["实验"])
+def confirm_thermal_load(req: Optional[ThermalParamsRequest] = None):
     """
-    确认样品已放入加热炉，并可选传入热处理参数（炉号、数量、曲线名）。
-    若启动时已通过 LLM 输出传入曲线，此处可不传曲线名，仅确认上料即可。
+    确认样品已放入加热炉，并可选传入热处理参数（炉号、数量、曲线名或曲线点、多炉分配）。
+    若传 oven_assignments，则按炉按 scheme_index 取各方案温度曲线执行；否则单炉沿用 oven_id/qty/curve_points。
     """
-    if body:
+    if req:
+        oven_assignments = (
+            [a.model_dump() for a in req.oven_assignments]
+            if req.oven_assignments else None
+        )
         experiment_orchestrator.confirm_thermal_load(
-            oven_id=body.oven_id,
-            qty=body.qty,
-            curve_name=body.curve_name,
+            oven_id=req.oven_id,
+            qty=req.qty,
+            curve_name=req.curve_name,
+            curve_points=req.curve_points,
+            oven_assignments=oven_assignments,
         )
     else:
         experiment_orchestrator.confirm_thermal_load()
     return {"message": "上料确认已接收，开始热处理"}
 
 
-@router.post("/flux/confirm_xrd_ready", tags=["实验"])
-def confirm_xrd_ready():
+@router.post("/confirm_xrd_ready", tags=["实验"])
+def confirm_xrd_ready(req: Optional[XRDParamsRequest] = None):
     """确认样品已放入 XRD 试验台，流程将开始 XRD 测试。"""
-    experiment_orchestrator.confirm_xrd_ready()
+    if req:
+        experiment_orchestrator.confirm_xrd_ready(
+            start_theta=req.start_theta,
+            end_theta=req.end_theta,
+            increment=req.increment,
+            exp_time=req.exp_time,
+            sample_assignments=req.sample_assignments,
+        )
+    else:
+        experiment_orchestrator.confirm_xrd_ready()
     return {"message": "XRD上样确认已接收，开始XRD测试"}
 
 

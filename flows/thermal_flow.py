@@ -916,24 +916,24 @@ class ThermalFlowManager:
             self._log_step("严重错误: 离心机门未打开，任务中止", "ERROR")
             return {"status": False, "message": "离心机门未打开，任务中止"}
 
-        # step7. 设置机器人离心机等关联设备状态
+        # step6. 设置机器人离心机等关联设备状态
         if not self._set_linked_devices_status_to_robot(False):
             self._log_step("严重错误: 发送PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "发送PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 炉盖、玻璃门开启确认信号 (M10.2/M10.3)", "INFO")
 
-        # step8. 等待机器人任务完成
+        # step7. 等待机器人任务完成
         if not self._wait_for_robot_task_completed(TaskType.CENT_DROP, need_home_check=False):
             self._log_step(f"严重错误: {TASKS[TaskType.OVEN_DROP]}任务未完成，任务中止", "ERROR")
             return {"status": False, "message": f"{TASKS[TaskType.OVEN_DROP]}任务未完成，任务中止"}
 
-        # step9. 取消设置机器人离心机等关联设备状态
+        # step8. 取消设置机器人离心机等关联设备状态
         if not self._unset_linked_devices_status_to_robot(False):
             self._log_step("严重错误: 取消设置PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "取消设置PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 炉盖、玻璃门关闭确认信号 (M10.2/M10.3)", "INFO")
 
-        # step10. 关闭离心机门，并等待关闭完成，这里获取状态的代码没有实现，只能等待3秒
+        # step9. 关闭离心机门，并等待关闭完成，这里获取状态的代码没有实现，只能等待3秒
         result = self.centrifuge_controller.close_door()
         if result.get("status") != "success":
             self._log_step(f"严重错误: 离心机门关闭失败: {result.get('message')}", "ERROR")
@@ -986,24 +986,24 @@ class ThermalFlowManager:
             self._log_step("严重错误: 离心机门未打开，任务中止", "ERROR")
             return {"status": False, "message": "离心机门未打开，任务中止"}
 
-        # step7. 设置机器人离心机等关联设备状态
+        # step6. 设置机器人离心机等关联设备状态
         if not self._set_linked_devices_status_to_robot(False):
             self._log_step("严重错误: 发送PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "发送PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 离心机开启确认信号 (M10.4)", "INFO")
 
-        # step8. 等待机器人任务完成
+        # step7. 等待机器人任务完成
         if not self._wait_for_robot_task_completed(TaskType.CENT_TAKE, need_home_check=False):
             self._log_step(f"严重错误: {TASKS[TaskType.CENT_TAKE]}任务未完成，任务中止", "ERROR")
             return {"status": False, "message": f"{TASKS[TaskType.CENT_TAKE]}任务未完成，任务中止"}
 
-        # step9. 取消设置机器人离心机等关联设备状态
+        # step8. 取消设置机器人离心机等关联设备状态
         if not self._unset_linked_devices_status_to_robot(False):
             self._log_step("严重错误: 取消设置PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "取消设置PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 离心机关闭确认信号 (M10.4)", "INFO")
 
-        # step10. 关闭离心机门，并等待关闭完成，最多等5秒
+        # step9. 关闭离心机门，并等待关闭完成，最多等5秒
         result = self.centrifuge_controller.close_door()
         if result.get("status") != "success":
             self._log_step(f"严重错误: 离心机门关闭失败: {result.get('message')}", "ERROR")

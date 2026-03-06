@@ -48,7 +48,7 @@ def get_sssi_by_substance(name: str) -> str:
 # 逆向：AddTaskRequest -> 配方 Excel 行数据 / Excel 文件（与 parse_mixer_tasks_from_excel 对应）
 # ---------------------------------------------------------------------------
 
-def add_task_request_to_recipe_rows(add_task: AddTaskRequest) -> List[List[Tuple[str, float]]]:
+def add_task_request_to_recipe_rows(add_task: AddTaskRequest) -> List[List[Tuple[str, float, str]]]:
     """
     将 AddTaskRequest 转为与「配方 Excel」一致的行数据（仅配料表部分）。
 
@@ -60,17 +60,18 @@ def add_task_request_to_recipe_rows(add_task: AddTaskRequest) -> List[List[Tuple
     grouped: dict[int, List[LayoutListItem]] = defaultdict(list)
     for item in add_task.layout_list:
         grouped[item.unit_column].append(item)
-    rows: List[List[Tuple[str, float]]] = []
+    rows: List[List[Tuple[str, float, str]]] = []
     for col in sorted(grouped.keys()):
         items = sorted(grouped[col], key=lambda x: x.unit_row)
-        row: List[Tuple[str, float]] = []
+        row: List[Tuple[str, float, str]] = []
         for it in items:
             p = it.process_json
             name = (p.substance or "").strip()
             if getattr(p, "SSSI", None) and (p.SSSI or "").strip():
                 name = f"【{(p.SSSI or '').strip()}】{name}"
             weight_mg = float(p.add_weight) if p.add_weight is not None else 0.0
-            row.append((name, weight_mg))
+            unit = p.custom.unit if p.custom else "mg"
+            row.append((name, weight_mg, unit))
         rows.append(row)
     return rows
 
@@ -96,7 +97,7 @@ def add_task_request_to_excel_bytes(add_task: AddTaskRequest) -> bytes:
         line = []
         for i in range(max_pairs):
             if i < len(row):
-                name, w = row[i]
+                name, w, unit = row[i]
                 sssi = get_sssi_by_substance(name)
                 line.append(f"【{sssi}】{name}" if sssi else name)
                 line.append(w)

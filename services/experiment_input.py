@@ -138,8 +138,16 @@ def get_selected_scheme(req: StartExperimentRequest) -> RecommendExperimentSchem
         raise ValueError("推荐实验方案列表为空，无法启动实验")
     return schemes[0]
 
+def get_schemes(req: StartExperimentRequest) -> List[RecommendExperimentScheme]:
+    """
+    从请求中取所有实验方案（用于配料任务）。列表为空时抛出 ValueError。
+    """
+    schemes = req.推荐实验方案列表 or []
+    if not schemes:
+        raise ValueError("推荐实验方案列表为空，无法启动实验")
+    return schemes
 
-def get_sample_manifest(req: StartExperimentRequest) -> List[dict]:
+def get_scheme_manifest(req: StartExperimentRequest) -> List[dict]:
     """
     按 推荐实验方案列表 顺序生成试管配方清单，供加热/XRD 与序号对应。
     返回列表每项为 {"scheme_index": int, "scheme_id": str, "scheme_type": str}，长度 = len(推荐实验方案列表)。
@@ -524,25 +532,17 @@ def llm_output_to_add_task_request(
 ROOM_TEMP_DEFAULT = 20.0
 
 
-def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
+def _temperature_program_to_curve_points(tp: Optional[TemperatureProgram]) -> List[CurvePoint]:
     """
-    从选中方案的 工艺参数.温度程序 生成加热炉曲线 List[CurvePoint]。
-
+    从单条 温度程序 生成加热炉曲线 List[CurvePoint]。
     语义：每点 (temperature, time) 表示该段温度与段持续时间（小时）。
-    - 升温/降温段：(起始温度, 本段耗时)；保温段：(保温温度, 保温时长)。
-    - 顺序：(20, 升温到次高温时间_h) -> (次高温, 次高温段保温时间_h) -> (次高温, 升温到最高温时间_h) -> (最高温, 最高温段保温时间_h) -> (最高温, 降温时间_主降温_h) -> (低温, 低温段保温时间_h) -> (低温, -121) 结束。
     """
-    scheme = get_selected_scheme(req)
-    recipe = scheme.工艺参数
-    if not recipe or not recipe.温度程序:
+    if not tp:
         return [
             CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=0.0),
             CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=-121.0),
         ]
-
-    tp: TemperatureProgram = recipe.温度程序
     points: List[CurvePoint] = []
-
     ramp1_hr = float(tp.升温到次高温时间_h or 0.0)
     T1 = float(tp.次高温段温度_摄氏 or 0.0)
     hold1_hr = float(tp.次高温段保温时间_h or 0.0)
@@ -553,27 +553,44 @@ def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
     T_low = float(tp.低温段保温温度_摄氏 or 0.0)
     hold3_hr = float(tp.低温段保温时间_h or 0.0)
 
-    # 1. 从室温开始，第一段：历时 ramp1_hr 升温到次高温
     points.append(CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=ramp1_hr if ramp1_hr > 0 else 0.0))
     if T1 > 0:
         points.append(CurvePoint(temperature=T1, time=hold1_hr))
-
-    # 2. 历时 ramp2_hr 从 T1 升温到最高温 → (起始温度 T1, 本段耗时)
     if T_high > 0:
         points.append(CurvePoint(temperature=T1, time=ramp2_hr))
         points.append(CurvePoint(temperature=T_high, time=hold2_hr))
-
-    # 3. 历时 cool_hr 从最高温降温到低温 → (起始温度 T_high, 本段耗时)
     points.append(CurvePoint(temperature=T_high, time=cool_hr))
     points.append(CurvePoint(temperature=T_low, time=hold3_hr))
-
-    # 4. 结束标记
     points.append(CurvePoint(temperature=T_low, time=-121.0))
-
-    # 5. 删除所有time为0的点
     points = [p for p in points if p.time != 0.0]
-
     return points
+
+
+def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
+    """
+    从选中方案（第一个）的 工艺参数.温度程序 生成加热炉曲线 List[CurvePoint]。
+    """
+    scheme = get_selected_scheme(req)
+    recipe = scheme.工艺参数
+    return _temperature_program_to_curve_points(recipe.温度程序 if recipe else None)
+
+
+def llm_output_to_curve_points_for_scheme_index(
+    req: StartExperimentRequest, scheme_index: int
+) -> List[CurvePoint]:
+    """
+    从 推荐实验方案列表 中指定索引方案的 工艺参数.温度程序 生成加热炉曲线。
+    用于多炉多曲线：每炉对应一方案，按 scheme_index 取该方案曲线。
+    """
+    schemes = req.推荐实验方案列表 or []
+    if not schemes or scheme_index < 0 or scheme_index >= len(schemes):
+        return [
+            CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=1.0),
+            CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=-121.0),
+        ]
+    scheme = schemes[scheme_index]
+    recipe = scheme.工艺参数 if scheme else None
+    return _temperature_program_to_curve_points(recipe.温度程序 if recipe else None)
 
 
 def llm_output_to_experiment_input(

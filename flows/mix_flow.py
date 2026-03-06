@@ -156,4 +156,7 @@ class MixFlowManager:
             }
         }
 
+    def stop(self):
+        self.running = False
+
 mix_flow_mgr = MixFlowManager(mixer_controller)

@@ -201,6 +201,7 @@ class OpTaskRequest(BaseModel):
 class IngredientItem(BaseModel):
     substance: str
     weight: float
+    unit: str = "mg"
 
 class SchemeItem(BaseModel):
     scheme_name: str
