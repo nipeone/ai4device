@@ -18,11 +18,17 @@ from devices.mixer_core import mixer_controller
 from devices.centrifuge_core import centrifuge_controller
 from devices.oven_core import oven_controller
 from devices.door_core import door_controller
+from swagger_monkey import swagger_monkey_patch, redoc_monkey_patch
 # ==========================================
 # 应用生命周期管理
 # ==========================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
+    from fastapi import applications
+    applications.get_swagger_ui_html = swagger_monkey_patch
+    applications.get_redoc_html = redoc_monkey_patch
+
     # Startup
     logger.log("系统服务启动...", "INFO")
     if getattr(config, "MOCK_DEVICES", False):
@@ -50,7 +56,7 @@ async def lifespan(app: FastAPI):
 # ==========================================
 # 初始化全局对象
 # ==========================================
-app = FastAPI(title="AGV总控系统", version="10.4", lifespan=lifespan)
+app = FastAPI(title="智能设备AI总控系统", version="1.0.4", lifespan=lifespan)
 
 # 注册各种路由
 app.include_router(centrifuge_router)
@@ -67,3 +73,15 @@ app.include_router(xrd_router)
 @app.get("/")
 def read_root():
     return {"message": "AGV总控系统 API", "status": "running"}
+
+def register_static_file(app: FastAPI):
+    """
+    静态文件交互开发模式使用，生产使用 nginx 静态资源服务，这里是开发是方便本地
+    :param app:
+    :return:
+    """
+    import os
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/static", StaticFiles(directory="assets/static"), name="static")
+
+register_static_file(app)

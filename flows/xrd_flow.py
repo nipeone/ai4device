@@ -389,11 +389,27 @@ class XRDFlowManager:
         
         results = []
         station_counter = 1
-        
         for idx, sample in enumerate(samples, 1):
             sample_id = sample.get("sample_id", f"Sample_{idx}")
             station = sample.get("station", station_counter)
-            station_counter = station + 1 if station_counter == station else station_counter + 1
+            station_counter = station + 1
+            results.append({
+                "sample_id": sample_id,
+                "station": station,
+                "status": True,
+                "message": "样品等待上样",
+                "data": None
+            })
+        
+        for idx, sample in enumerate(samples, 1):
+            sample_id = sample.get("sample_id", f"Sample_{idx}")
+            result = None
+            for _result in results:
+                if _result["sample_id"] == sample_id:
+                    result = _result
+                    break
+
+            station = result["station"]
             
             self._log_step(f"处理样品 {idx}/{len(samples)}: {sample_id} (工位{station})", "INFO")
             
@@ -408,40 +424,30 @@ class XRDFlowManager:
             # 步骤2: 等待人工上样
             self._log_step(f"步骤2: 等待人工上样 (样品{idx}, 工位{station})...", "INFO")
             if not self._wait_for_confirm(f"请将样品{sample_id}放到工位{station}，然后点击确认", timeout=300):
-                results.append({
-                    "sample_id": sample_id,
-                    "station": station,
-                    "status": False,
-                    "message": "上样确认超时或取消"
-                })
+                result["status"] = False
+                result["message"] = "上样确认超时或取消"
                 continue
             
-            # 步骤3: 发送样品信息和采集参数
-            self._log_step(f"步骤3: 发送样品信息和采集参数 (样品{idx})...", "INFO")
-            response = self.xrd_controller.send_sample_ready(
-                sample_id=sample_id,
-                start_theta=sample.get("start_theta", 10.0),
-                end_theta=sample.get("end_theta", 80.0),
-                increment=sample.get("increment", 0.05),
-                exp_time=sample.get("exp_time", 0.1)
-            )
-            if not response.get("status"):
-                error_msg = response.get("message", "发送采集参数失败")
-                self._log_step(f"发送采集参数失败: {error_msg}", "ERROR")
-                results.append({
-                    "sample_id": sample_id,
-                    "station": station,
-                    "status": False,
-                    "message": error_msg
-                })
-                continue
-            
-            results.append({
-                "sample_id": sample_id,
-                "station": station,
-                "status": True,
-                "message": "样品已上样，等待测试"
-            })
+        # 步骤3: 多样品模式，所有样品的get_sample_request发送完成后，再统一发送send_sample_ready
+        self._log_step(f"步骤3: 发送样品信息和采集参数...", "INFO")
+        response = self.xrd_controller.send_sample_ready(
+            sample_id=sample_id,
+            start_theta=sample.get("start_theta", 10.0),
+            end_theta=sample.get("end_theta", 80.0),
+            increment=sample.get("increment", 0.05),
+            exp_time=sample.get("exp_time", 0.1)
+        )
+        if not response.get("status"):
+            error_msg = response.get("message", "发送采集参数失败")
+            self._log_step(f"发送采集参数失败: {error_msg}", "ERROR")
+            for result in results:
+                result["status"] = False
+                result["message"] = f"发送采集就绪信号失败: {error_msg}"
+            return self._return_with_error(f"发送采集就绪信号失败: {error_msg}")
+        
+        for result in results:
+            result["status"] = True
+            result["message"] = f"发送采集就绪信号成功: {response}"
         
         # 步骤4: 等待所有测试完成（可选）
         if wait_for_all:
@@ -452,31 +458,31 @@ class XRDFlowManager:
         self._log_step("步骤5: 获取测试数据并下样...", "INFO")
         for idx, sample in enumerate(samples, 1):
             sample_id = sample.get("sample_id", f"Sample_{idx}")
-            station = sample.get("station", idx)
+            result = None
+            for _result in results:
+                if _result["sample_id"] == sample_id:
+                    result = _result
+                    break
             
-            # 获取数据
-            data_response = self.xrd_controller.get_current_acquire_data()
-            
+            station = result["station"]
+            down_response = self.xrd_controller.get_sample_down(station)
+            if down_response.get("status"):
+                # 更新结果
+                result["data"] = down_response.get("sample_info")
+                result["status"] = True
+                result["message"] = f"下样成功"
+            else:
+                self._log_step(f"下样失败 (工位{station}): {down_response.get('message')}", "WARN")
+        
             # 下样
             self._log_step(f"下样: 样品{sample_id} (工位{station})...", "INFO")
             if not self._wait_for_confirm(f"请确认样品{sample_id}已从工位{station}取出，然后点击确认", timeout=300):
                 continue
-            
-            down_response = self.xrd_controller.get_sample_down(station)
-            if down_response.get("status"):
-                # 更新结果
-                for result in results:
-                    if result.get("sample_id") == sample_id:
-                        result["data"] = down_response.get("sample_info")
-                        result["down_status"] = True
-                        break
-            else:
-                self._log_step(f"下样失败 (工位{station}): {down_response.get('message')}", "WARN")
-        
+
         # 发送下样完成信号
         self.xrd_controller.send_sample_down_ready()
         
-        result = {
+        rtn = {
             "status": True,
             "total_samples": len(samples),
             "results": results,
@@ -484,7 +490,7 @@ class XRDFlowManager:
         }
         
         self._log_step(f"多样品测试流程完成 - 共处理 {len(samples)} 个样品", "SUCCESS")
-        return result
+        return rtn
 
     def get_realtime_data(self, sample_id: Optional[str] = None) -> Dict[str, Any]:
         """

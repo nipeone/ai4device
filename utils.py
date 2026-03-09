@@ -35,7 +35,6 @@ def initialize_oven_curve_db():
                 points_json TEXT, 
                 save_time DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
-
 def retry_on_failure(
     max_retries: int = 2,
     delay: float = 0.5,
