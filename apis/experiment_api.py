@@ -1,5 +1,6 @@
 """
 实验总流程 API：委托给 flows.experiment_flow 中的状态机编排器，无全局状态。
+实验后 XRD 补充测试：POST /api/experiment/{experiment_id}/xrd-supplement，与 experiment_id/sample_id 关联存储。
 
 启动实验：
 - POST /flux：入参为大模型规范输出（JSON，见 schemas/llm_output.py），
@@ -17,6 +18,7 @@
   配料、熔封 -> [等待熔封确认] -> 上料 -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
 """
 import io
+import uuid
 from datetime import datetime
 from typing import Optional
 from urllib.parse import quote
@@ -27,6 +29,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi import Query
 
 from flows.experiment_flow import experiment_orchestrator
+from flows.xrd_flow import xrd_flow_mgr
 from services.mixer import mixer_service
 from services import experiment_persistence
 from services.mixer import add_task_request_to_recipe_rows, add_task_request_to_excel_bytes
@@ -38,7 +41,7 @@ from services.experiment_input import (
     get_selected_scheme,
     get_schemes,
 )
-from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest, XRDParamsRequest
+from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest, XRDParamsRequest, XRDSupplementRequest
 from schemas.llm_output import StartExperimentRequest
 
 from logger import sys_logger as logger
@@ -283,7 +286,7 @@ def confirm_xrd_ready(req: Optional[XRDParamsRequest] = None):
             end_theta=req.end_theta,
             increment=req.increment,
             exp_time=req.exp_time,
-            sample_assignments=req.sample_assignments,
+            scheme_index=req.scheme_index,
         )
     else:
         experiment_orchestrator.confirm_xrd_ready()
@@ -299,3 +302,67 @@ def stop_experiment():
     """
     ok = experiment_orchestrator.stop()
     return {"stopped": ok, "message": "已请求停止实验" if ok else "当前无实验在运行"}
+
+
+@router.post("/{experiment_id}/xrd-supplement", tags=["实验"])
+def xrd_supplement(experiment_id: str, req: Optional[XRDSupplementRequest] = None):
+    """
+    实验后 XRD 补充测试：对已完成实验的燃烧后材料再做一次 XRD 测试，结果按 experiment_id、sample_id 关联存储。
+    若不传 sample_id 则自动生成并写入 sample_bindings；可传 scheme_id/scheme_index 便于与方案对应。
+    """
+    exp = experiment_persistence.get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(status_code=404, detail=f"实验不存在: {experiment_id}")
+    body = req or XRDSupplementRequest()
+    sample_id = body.sample_id
+    scheme_id = body.scheme_id
+    scheme_index = body.scheme_index
+    if not sample_id:
+        sample_id = f"supplement_{scheme_id or '方案'}_{uuid.uuid4().hex[:8]}"
+        try:
+            experiment_persistence.insert_sample_binding(
+                experiment_id, sample_id, scheme_id=scheme_id, scheme_index=scheme_index
+            )
+        except Exception as e:
+            logger.log(f"补充测试写入 sample_binding 失败: {e}", "WARN")
+    start_theta = body.start_theta if body.start_theta is not None else 5.1
+    end_theta = body.end_theta if body.end_theta is not None else 120.0
+    increment = body.increment if body.increment is not None else 0.01
+    exp_time = body.exp_time if body.exp_time is not None else 0.1
+    try:
+        xrd_result = xrd_flow_mgr.run(
+            single=True,
+            sample_id=sample_id,
+            start_theta=float(start_theta),
+            end_theta=float(end_theta),
+            increment=float(increment),
+            exp_time=float(exp_time),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"XRD 执行失败: {e}")
+    if not xrd_result.get("status"):
+        raise HTTPException(
+            status_code=502,
+            detail=xrd_result.get("message", "XRD 测试未成功完成"),
+        )
+    latest = xrd_flow_mgr.get_latest_data()
+    if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
+        d = latest.get("data", {})
+        to_persist = [{
+            "sample_id": sample_id,
+            "scheme_id": scheme_id,
+            "scheme_index": scheme_index,
+            "scheme_type": "",
+            "theta2": d.get("theta2"),
+            "intensity": d.get("intensity"),
+            "timestamp": d.get("timestamp"),
+        }]
+        try:
+            experiment_persistence.insert_xrd_results(experiment_id, to_persist)
+        except Exception as e:
+            logger.log(f"补充测试 XRD 结果持久化失败: {e}", "WARN")
+    return {
+        "status": True,
+        "sample_id": sample_id,
+        "message": "XRD 补充测试完成，结果已按 experiment_id/sample_id 关联存储",
+    }

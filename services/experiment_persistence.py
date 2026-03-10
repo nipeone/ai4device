@@ -2,6 +2,7 @@
 实验与 XRD 结果 SQLite 持久化。
 - experiments：实验主表（experiment_id、phase、task_name、scheme_manifest、thermal_params、error_message、时间戳）
 - xrd_results：XRD 结果表（experiment_id、sample_id、scheme_id、theta2、intensity 等）
+- sample_bindings：实验-方案-样品绑定（confirm_xrd_ready 时生成 sample_id 后写入，供补充测试关联）
 """
 import json
 import os
@@ -54,6 +55,18 @@ def init_experiment_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_xrd_experiment_id ON xrd_results(experiment_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_experiments_created_at ON experiments(created_at DESC)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sample_bindings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment_id TEXT NOT NULL,
+                scheme_id TEXT,
+                scheme_index INTEGER,
+                sample_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (experiment_id) REFERENCES experiments(experiment_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sample_bindings_experiment_id ON sample_bindings(experiment_id)")
 
 
 def insert_experiment(
@@ -102,6 +115,38 @@ def update_experiment_phase(
                 "UPDATE experiments SET phase = ?, updated_at = ? WHERE experiment_id = ?",
                 (phase, now, experiment_id),
             )
+
+
+def insert_sample_binding(
+    experiment_id: str,
+    sample_id: str,
+    scheme_id: Optional[str] = None,
+    scheme_index: Optional[int] = None,
+    scheme_type: Optional[str] = None,
+) -> None:
+    """confirm_xrd_ready 时生成 sample_id 后写入绑定，便于与 experiment_id/scheme_id 关联及补充测试。"""
+    now = datetime.utcnow().isoformat() + "Z"
+    path = _db_path()
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            """
+            INSERT INTO sample_bindings (experiment_id, scheme_id, scheme_index, sample_id, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (experiment_id, scheme_id, scheme_index, sample_id, now),
+        )
+
+
+def get_sample_bindings(experiment_id: str) -> List[Dict[str, Any]]:
+    """按 experiment_id 查询该实验的样品绑定列表（含补充测试前预绑定的 sample_id）。"""
+    path = _db_path()
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT experiment_id, scheme_id, scheme_index, sample_id, created_at FROM sample_bindings WHERE experiment_id = ? ORDER BY id",
+            (experiment_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def insert_xrd_results(experiment_id: str, results: List[Dict[str, Any]]) -> None:

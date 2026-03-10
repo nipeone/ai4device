@@ -21,6 +21,23 @@ class ExperimentPhase(str, Enum):
     ERROR = "error"                                 # 实验异常结束
 
 
+class NextActionParam(BaseModel):
+    """下一步接口的请求体参数说明，供客户端只填必填项即可调用"""
+    name: str = Field(..., description="参数名")
+    type: str = Field(..., description="类型：int | float | string | array | object")
+    required: bool = Field(..., description="是否必填")
+    description: Optional[str] = Field(default=None, description="说明")
+    default: Optional[Any] = Field(default=None, description="非必填时的默认值或示例")
+
+
+class NextAction(BaseModel):
+    """当前阶段需客户端调用的下一步接口：轮询到该阶段时返回，body_data 为根据当前情况预填的数据，客户端只需补全标为需手填的字段（如 null）后调用"""
+    method: str = Field(..., description="HTTP 方法，如 POST")
+    path: str = Field(..., description="接口路径，如 /api/experiment/confirm_seal")
+    body_data: Optional[Dict[str, Any]] = Field(default=None, description="根据当前方案/炉号等预填的请求体，需用户填写的项为 null")
+    body_schema: List[NextActionParam] = Field(default_factory=list, description="（可选）参数说明，required=true 或值为 null 的字段需客户端填写")
+
+
 # 阶段说明（供 Agent 理解当前状态与下一步动作）
 PHASE_LABELS: Dict[str, str] = {
     ExperimentPhase.IDLE: "空闲，可启动实验",
@@ -75,6 +92,14 @@ class ExperimentStatusResponse(BaseModel):
         default=None,
         description="实验完成时的XRD结果（单试管或多试管），仅 phase=completed 时有值，每项含 experiment_id/scheme_id/sample_id 便于关联；单试管时可为空",
     )
+    next_action: Optional[NextAction] = Field(
+        default=None,
+        description="当 phase 为 waiting_seal_confirm / waiting_thermal_load / waiting_xrd_ready 时返回，客户端按 method+path 调用并填写 body_schema 中必填参数即可继续流程",
+    )
+    xrd_running_sample: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="当 phase=xrd_running 时返回，当前正在执行 XRD 检测的方案与样品：scheme_index、scheme_id、sample_id，便于客户端展示",
+    )
 
 
 class StartExperimentResponse(BaseModel):
@@ -87,10 +112,21 @@ class StartExperimentResponse(BaseModel):
 
 
 class OvenAssignment(BaseModel):
-    """单炉分配：指定某炉放入某方案对应的试管及数量，曲线由 scheme_index 从 LLM 方案列表解析"""
+    """单炉分配：指定某炉放入某方案对应的试管；每方案一管，qty 可选默认 1"""
     oven_id: int = Field(..., description="炉子ID")
     scheme_index: int = Field(..., description="方案索引（0 起），对应推荐实验方案列表顺序")
-    qty: int = Field(..., description="放入该炉的试管数量")
+    qty: int = Field(1, description="放入该炉的试管数量，默认 1（每方案一管）")
+
+
+class XRDSupplementRequest(BaseModel):
+    """实验后 XRD 补充测试请求：关联到已有实验，可选指定或自动生成 sample_id"""
+    sample_id: Optional[str] = Field(default=None, description="样品ID，不传则自动生成并绑定到本实验")
+    scheme_id: Optional[str] = Field(default=None, description="关联方案ID，便于与实验方案对应")
+    scheme_index: Optional[int] = Field(default=None, description="关联方案索引（0 起）")
+    start_theta: Optional[float] = Field(default=5.1, description="起始角度")
+    end_theta: Optional[float] = Field(default=120.0, description="结束角度")
+    increment: Optional[float] = Field(default=0.01, description="步长")
+    exp_time: Optional[float] = Field(default=0.1, description="曝光时间")
 
 
 class ThermalParamsRequest(BaseModel):
@@ -104,10 +140,10 @@ class ThermalParamsRequest(BaseModel):
         description="多炉分配：每项指定 oven_id、scheme_index、qty；每种炉只能设一条曲线，不同方案进不同炉",
     )
 
-class SampleAssignment(BaseModel):
-    """样品数量分配：指定某方案放入某炉的试管数量"""
-    scheme_index: int = Field(..., description="方案索引（0 起），对应推荐实验方案列表顺序")
-    qty: int = Field(1, description="样品制备的数量")
+# class SampleAssignment(BaseModel):
+#     """样品数量分配：指定某方案放入某炉的试管数量"""
+#     scheme_index: int = Field(..., description="方案索引（0 起），对应推荐实验方案列表顺序")
+#     qty: int = Field(1, description="样品制备的数量")
 
 class XRDParamsRequest(BaseModel):
     """XRD上样参数（在确认“样品已放入XRD试验台”时可选传入；不传则沿用默认值）"""
@@ -115,7 +151,7 @@ class XRDParamsRequest(BaseModel):
     end_theta: Optional[float] = Field(default=120.0, description="结束角度")
     increment: Optional[float] = Field(default=0.01, description="步长")
     exp_time: Optional[float] = Field(default=0.1, description="曝光时间")
-    sample_assignments: Optional[List[SampleAssignment]] = Field(default=None, description="各个方案样品制备数量，默认为1")
+    scheme_index: int = Field(..., description="方案索引（0 起），对应推荐实验方案列表顺序")
 
     @field_validator('start_theta')
     def validate_start_theta(cls, v):

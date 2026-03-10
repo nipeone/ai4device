@@ -65,6 +65,10 @@ class ThermalFlowManager:
         self.task_queue = []
         self.running = False
         self.current_step_info = "就绪"
+        # 多炉并行：引用计数，只有全部 run 结束时 running 才置 False
+        self._run_ref_lock = threading.Lock()
+        self._run_ref_count = 0
+        self._thread_local = threading.local()  # 线程本地 oven_id，用于日志前缀 [炉X]
 
         # === 新增：确认信号事件 ===
         self.confirm_event = threading.Event()
@@ -101,9 +105,12 @@ class ThermalFlowManager:
         self.running = False
 
     def _log_step(self, message: str, level: str = "INFO"):
-        """记录步骤日志"""
-        self.current_step_info = message
-        self.logger.log(f"[热处理流程] {message}", level)
+        """记录步骤日志；多炉并行时带 [炉{oven_id}] 前缀"""
+        oven_id = getattr(self._thread_local, "oven_id", None)
+        prefix = f"[炉{oven_id}] " if oven_id is not None else ""
+        full_msg = prefix + message
+        self.current_step_info = full_msg
+        self.logger.log(f"[热处理流程] {full_msg}", level)
 
     def _wait_for_confirm(self, message: str, timeout: Optional[float] = None):
         """等待人工确认"""
@@ -1204,16 +1211,18 @@ class ThermalFlowManager:
         return {"status": True, "message": "下料流程完成"}
 
     def run(self, oven_id: int, qty: int, curve_points: List[CurvePoint]):
-
+        self._thread_local.oven_id = oven_id
         try:
-            self.running = True
+            with self._run_ref_lock:
+                self._run_ref_count += 1
+                self.running = True
             #########################################################
             # 1. 上料 #
             #########################################################
-            result = self.load(ShelfType.SHELF_1.value, oven_id, qty)
-            if not result.get("status"):
-                self._log_step(f"严重错误: 上料任务失败: {result.get('message')}", "ERROR")
-                return self._return_with_error(f"上料任务失败: {result.get('message')}")
+            # result = self.load(ShelfType.SHELF_1.value, oven_id, qty)
+            # if not result.get("status"):
+            #     self._log_step(f"严重错误: 上料任务失败: {result.get('message')}", "ERROR")
+            #     return self._return_with_error(f"上料任务失败: {result.get('message')}")
 
             #########################################################
             # 2. 燃烧 #
@@ -1223,24 +1232,30 @@ class ThermalFlowManager:
                 self._log_step(f"严重错误: 燃烧任务失败: {result.get('message')}", "ERROR")
                 return self._return_with_error(f"燃烧任务失败: {result.get('message')}")
 
-            self._log_step(f"燃烧任务完成: {result.get('message')}", "SUCCESS")
+            self._log_step(f"高温加热任务完成: {result.get('message')}", "SUCCESS")
 
             #########################################################
             # 3. 下料 #
             #########################################################
-            result = self.unload(ShelfType.SHELF_2.value, oven_id, qty)
-            if not result.get("status"):
-                self._log_step(f"严重错误: 下料任务失败: {result.get('message')}", "ERROR")
-                return self._return_with_error(f"下料任务失败: {result.get('message')}")
+            # result = self.unload(ShelfType.SHELF_2.value, oven_id, qty)
+            # if not result.get("status"):
+            #     self._log_step(f"严重错误: 下料任务失败: {result.get('message')}", "ERROR")
+            #     return self._return_with_error(f"下料任务失败: {result.get('message')}")
 
-            self._log_step(f"下料任务完成: {result.get('message')}", "SUCCESS")
+            # self._log_step(f"下料任务完成: {result.get('message')}", "SUCCESS")
 
             return {"status": True, "message": "热处理流程完成"}
         except Exception as e:
             self._log_step(f"严重错误: 热处理流程失败: {e}", "ERROR")
             return self._return_with_error(f"热处理流程失败: {e}")
         finally:
-            self.running = False
+            try:
+                self._thread_local.oven_id = None
+            except Exception:
+                pass
+            with self._run_ref_lock:
+                self._run_ref_count -= 1
+                self.running = self._run_ref_count > 0
 
     def get_summary(self) -> dict:
         """获取热处理流程总结"""

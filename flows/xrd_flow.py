@@ -22,7 +22,9 @@ class XRDFlowManager:
         self.current_step_info = "就绪"
         self.thread = None
         self.latest_data = None
-        
+        # 当前正在执行 XRD 的样品信息（供状态接口返回 scheme_index/scheme_id/sample_id）
+        self.current_running_sample: Optional[Dict[str, Any]] = None
+
         # 确认信号事件（用于人工确认步骤）
         self.confirm_event = threading.Event()
         self.confirm_event.set()  # 默认设置为True
@@ -267,6 +269,7 @@ class XRDFlowManager:
         self._log_step(f"开始单样品测试流程：样品ID={sample_id}", "INFO")
         try:
             self.running = True
+            self.current_running_sample = {"sample_id": sample_id}
             ################################################################
             # 步骤0: 准备设备 #
             ################################################################
@@ -352,6 +355,7 @@ class XRDFlowManager:
             return self._return_with_error(f"单样品测试流程失败: {e}")
         finally:
             self.running = False
+            # 不在此处清 current_running_sample，以便 phase 仍为 xrd_running 时状态接口能返回当前/刚完成的样品；下次 run 会覆盖
     
     def run_multi_sample_test(self,
                           samples: List[Dict[str, Any]],
@@ -379,118 +383,114 @@ class XRDFlowManager:
             return self._return_with_error("样品数量超过30个，最多支持30个样品")
 
         self.running = True
-        ################################################################
-        # 步骤0: 准备设备 #
-        ################################################################
-        self._log_step("步骤0: 准备设备：设置自动模式、升高压、设置电压电流、等待电压电流稳定...", "INFO")
-        if not self._prepare_device(check_interval):
-            return self._return_with_error("设备准备失败")
+        self.current_running_sample = None
+        try:
+            ################################################################
+            # 步骤0: 准备设备 #
+            ################################################################
+            self._log_step("步骤0: 准备设备：设置自动模式、升高压、设置电压电流、等待电压电流稳定...", "INFO")
+            if not self._prepare_device(check_interval):
+                return self._return_with_error("设备准备失败")
 
-        
-        results = []
-        station_counter = 1
-        for idx, sample in enumerate(samples, 1):
-            sample_id = sample.get("sample_id", f"Sample_{idx}")
-            station = sample.get("station", station_counter)
-            station_counter = station + 1
-            results.append({
-                "sample_id": sample_id,
-                "station": station,
-                "status": True,
-                "message": "样品等待上样",
-                "data": None
-            })
-        
-        for idx, sample in enumerate(samples, 1):
-            sample_id = sample.get("sample_id", f"Sample_{idx}")
-            result = None
-            for _result in results:
-                if _result["sample_id"] == sample_id:
-                    result = _result
-                    break
-
-            station = result["station"]
-            
-            self._log_step(f"处理样品 {idx}/{len(samples)}: {sample_id} (工位{station})", "INFO")
-            
-            # 步骤1: 检查是否允许上样
-            self._log_step(f"步骤1: 检查是否允许上样 (样品{idx})...", "INFO")
-            response = self.xrd_controller.get_sample_request()
+            results = []
+            station_counter = 1
+            for idx, sample in enumerate(samples, 1):
+                sample_id = sample.get("sample_id", f"Sample_{idx}")
+                station = sample.get("station", station_counter)
+                station_counter = station + 1
+                results.append({
+                    "sample_id": sample_id,
+                    "station": station,
+                    "status": True,
+                    "message": "样品等待上样",
+                    "data": None
+                })
+            for idx, sample in enumerate(samples, 1):
+                sample_id = sample.get("sample_id", f"Sample_{idx}")
+                result = None
+                for _result in results:
+                    if _result["sample_id"] == sample_id:
+                        result = _result
+                        break
+                station = result["station"]
+                self.current_running_sample = {
+                    "sample_id": sample_id,
+                    "station": station,
+                    "index": idx,
+                    "scheme_index": sample.get("scheme_index"),
+                    "scheme_id": sample.get("scheme_id"),
+                }
+                self._log_step(f"处理样品 {idx}/{len(samples)}: {sample_id} (工位{station})", "INFO")
+                # 步骤1: 检查是否允许上样
+                self._log_step(f"步骤1: 检查是否允许上样 (样品{idx})...", "INFO")
+                response = self.xrd_controller.get_sample_request()
+                if not response.get("status"):
+                    error_msg = response.get("message", "不允许上样")
+                    self._log_step(f"上样请求被拒绝: {error_msg}", "ERROR")
+                    return self._return_with_error(f"上样请求被拒绝: {error_msg}")
+                # 步骤2: 等待人工上样
+                self._log_step(f"步骤2: 等待人工上样 (样品{idx}, 工位{station})...", "INFO")
+                if not self._wait_for_confirm(f"请将样品{sample_id}放到工位{station}，然后点击确认", timeout=300):
+                    result["status"] = False
+                    result["message"] = "上样确认超时或取消"
+                    continue
+            # 步骤3: 多样品模式，所有样品的get_sample_request发送完成后，再统一发送send_sample_ready
+            self._log_step(f"步骤3: 发送样品信息和采集参数...", "INFO")
+            response = self.xrd_controller.send_sample_ready(
+                sample_id=sample_id,
+                start_theta=sample.get("start_theta", 10.0),
+                end_theta=sample.get("end_theta", 80.0),
+                increment=sample.get("increment", 0.05),
+                exp_time=sample.get("exp_time", 0.1)
+            )
             if not response.get("status"):
-                error_msg = response.get("message", "不允许上样")
-                self._log_step(f"上样请求被拒绝: {error_msg}", "ERROR")
-                return self._return_with_error(f"上样请求被拒绝: {error_msg}")
-            
-            # 步骤2: 等待人工上样
-            self._log_step(f"步骤2: 等待人工上样 (样品{idx}, 工位{station})...", "INFO")
-            if not self._wait_for_confirm(f"请将样品{sample_id}放到工位{station}，然后点击确认", timeout=300):
-                result["status"] = False
-                result["message"] = "上样确认超时或取消"
-                continue
-            
-        # 步骤3: 多样品模式，所有样品的get_sample_request发送完成后，再统一发送send_sample_ready
-        self._log_step(f"步骤3: 发送样品信息和采集参数...", "INFO")
-        response = self.xrd_controller.send_sample_ready(
-            sample_id=sample_id,
-            start_theta=sample.get("start_theta", 10.0),
-            end_theta=sample.get("end_theta", 80.0),
-            increment=sample.get("increment", 0.05),
-            exp_time=sample.get("exp_time", 0.1)
-        )
-        if not response.get("status"):
-            error_msg = response.get("message", "发送采集参数失败")
-            self._log_step(f"发送采集参数失败: {error_msg}", "ERROR")
+                error_msg = response.get("message", "发送采集参数失败")
+                self._log_step(f"发送采集参数失败: {error_msg}", "ERROR")
+                for result in results:
+                    result["status"] = False
+                    result["message"] = f"发送采集就绪信号失败: {error_msg}"
+                return self._return_with_error(f"发送采集就绪信号失败: {error_msg}")
             for result in results:
-                result["status"] = False
-                result["message"] = f"发送采集就绪信号失败: {error_msg}"
-            return self._return_with_error(f"发送采集就绪信号失败: {error_msg}")
-        
-        for result in results:
-            result["status"] = True
-            result["message"] = f"发送采集就绪信号成功: {response}"
-        
-        # 步骤4: 等待所有测试完成（可选）
-        if wait_for_all:
-            self._log_step("步骤4: 等待所有样品测试完成...", "INFO")
-            self._wait_for_test_completion(check_interval, total_samples=len(samples))
-        
-        # 步骤5: 获取所有样品数据并下样
-        self._log_step("步骤5: 获取测试数据并下样...", "INFO")
-        for idx, sample in enumerate(samples, 1):
-            sample_id = sample.get("sample_id", f"Sample_{idx}")
-            result = None
-            for _result in results:
-                if _result["sample_id"] == sample_id:
-                    result = _result
-                    break
-            
-            station = result["station"]
-            down_response = self.xrd_controller.get_sample_down(station)
-            if down_response.get("status"):
-                # 更新结果
-                result["data"] = down_response.get("sample_info")
                 result["status"] = True
-                result["message"] = f"下样成功"
-            else:
-                self._log_step(f"下样失败 (工位{station}): {down_response.get('message')}", "WARN")
-        
-            # 下样
-            self._log_step(f"下样: 样品{sample_id} (工位{station})...", "INFO")
-            if not self._wait_for_confirm(f"请确认样品{sample_id}已从工位{station}取出，然后点击确认", timeout=300):
-                continue
+                result["message"] = f"发送采集就绪信号成功: {response}"
+            # 步骤4: 等待所有测试完成（可选）
+            if wait_for_all:
+                self._log_step("步骤4: 等待所有样品测试完成...", "INFO")
+                self._wait_for_test_completion(check_interval, total_samples=len(samples))
+            # 步骤5: 获取所有样品数据并下样
+            self._log_step("步骤5: 获取测试数据并下样...", "INFO")
+            for idx, sample in enumerate(samples, 1):
+                sample_id = sample.get("sample_id", f"Sample_{idx}")
+                result = None
+                for _result in results:
+                    if _result["sample_id"] == sample_id:
+                        result = _result
+                        break
+                station = result["station"]
+                down_response = self.xrd_controller.get_sample_down(station)
+                if down_response.get("status"):
+                    result["data"] = down_response.get("sample_info")
+                    result["status"] = True
+                    result["message"] = f"下样成功"
+                else:
+                    self._log_step(f"下样失败 (工位{station}): {down_response.get('message')}", "WARN")
+                self._log_step(f"下样: 样品{sample_id} (工位{station})...", "INFO")
+                if not self._wait_for_confirm(f"请确认样品{sample_id}已从工位{station}取出，然后点击确认", timeout=300):
+                    continue
+            # 发送下样完成信号
+            self.xrd_controller.send_sample_down_ready()
 
-        # 发送下样完成信号
-        self.xrd_controller.send_sample_down_ready()
-        
-        rtn = {
-            "status": True,
-            "total_samples": len(samples),
-            "results": results,
-            "message": "多样品测试流程完成"
-        }
-        
-        self._log_step(f"多样品测试流程完成 - 共处理 {len(samples)} 个样品", "SUCCESS")
-        return rtn
+            rtn = {
+                "status": True,
+                "total_samples": len(samples),
+                "results": results,
+                "message": "多样品测试流程完成"
+            }
+            self._log_step(f"多样品测试流程完成 - 共处理 {len(samples)} 个样品", "SUCCESS")
+            return rtn
+        finally:
+            self.running = False
+            # 不在此处清 current_running_sample，以便 phase 仍为 xrd_running 时状态接口能返回；下次 run 会覆盖
 
     def get_realtime_data(self, sample_id: Optional[str] = None) -> Dict[str, Any]:
         """
