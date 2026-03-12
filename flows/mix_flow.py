@@ -7,7 +7,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from schemas.mixer import AddTaskRequest, GetTaskInfoResponse, TaskStatus
-from devices.mixer_core import MixerController, mixer_controller
+from devices.mixer_core import MixerController
+from devices.mock_devices import get_mixer_controller
 from logger import sys_logger as logger
 
 class MixFlowManager:
@@ -147,8 +148,7 @@ class MixFlowManager:
 
     def get_summary(self) -> dict:
         """获取配料流程总结"""
-
-        mixer_summary = mixer_controller.get_running_status()
+        mixer_summary = self.mix_controller.get_running_status()
         return {
             "status": True,
             "summary": {
@@ -159,4 +159,4 @@ class MixFlowManager:
     def stop(self):
         self.running = False
 
-mix_flow_mgr = MixFlowManager(mixer_controller)
+mix_flow_mgr = MixFlowManager(get_mixer_controller())

@@ -17,6 +17,12 @@ from schemas.door import DoorActionCode, DoorStatus
 from schemas.oven import OvenStatus, CurvePoint
 from schemas.centrifuge import CentrifugeDoorStatus, CentrifugeStatus
 
+try:
+    import config
+except Exception:
+    config = None
+
+
 class TaskType(Enum):
     '''任务类型
     - SHELF_TAKE 货架取：1
@@ -464,7 +470,7 @@ class ThermalFlowManager:
 
     def _wait_for_oven_operation_completed(self, oven_id: int, target_status: OvenStatus) -> bool:
         """等待加热炉启动及停止，最多等3秒"""
-        self._log_step("正在等待加热炉启动及停止...", "INFO")
+        self._log_step(f"正在等待加热炉{target_status}...", "INFO")
         start_time = time.time()
         is_completed = False
         while self.running and time.time() - start_time < 3.0:  # 最多等3秒
@@ -476,7 +482,7 @@ class ThermalFlowManager:
         return is_completed
 
     def _wait_for_oven_burn_completed(self, oven_id: int, points: List[CurvePoint]) -> bool:
-        """等待加热炉燃烧完成，曲线中的时间为小时
+        """等待加热炉燃烧完成，曲线中的时间为小时。若配置了 BURN_WAIT_CAP_SEC 则等待时间不超过该上限。
         
         :param oven_id: 炉子ID
         :param points: 温度曲线
@@ -484,8 +490,12 @@ class ThermalFlowManager:
         """
         self._log_step("正在等待加热炉完成...", "INFO")
 
-        # 计算燃烧时间
-        burn_time = sum([p.time*60*60 for p in points[:-1] if p.time > 0]) + 60*10 # 燃烧时间 + 10分钟冗余时间
+        # 计算燃烧时间（小时转秒 + 10 分钟冗余）
+        burn_time = sum([p.time * 60 * 60 for p in points[:-1] if p.time > 0]) + 60 * 10
+        cap = getattr(config, "BURN_WAIT_CAP_SEC", 0) if config else 0
+        if cap > 0:
+            burn_time = min(burn_time, cap)
+            self._log_step(f"燃烧等待上限 {cap} 秒", "INFO")
         start_time = time.time()
         while time.time() - start_time < burn_time:
             if not self.running:
@@ -785,7 +795,7 @@ class ThermalFlowManager:
                 self._log_step("加热炉停止后状态异常，任务中止", "ERROR")
                 return {"status": False, "message": "加热炉停止后状态异常，任务中止"}
 
-            self._log_step("加热炉燃烧完成", "SUCCESS")
+            self._log_step("加热炉已停止", "SUCCESS")
             return {"status": True, "message": "加热炉燃烧完成"}
         except Exception as e:
             self._log_step(f"严重错误: 加热炉燃烧失败: {e}", "ERROR")
@@ -1260,9 +1270,9 @@ class ThermalFlowManager:
     def get_summary(self) -> dict:
         """获取热处理流程总结"""
 
-        robot_summary = robot_controller.get_running_status()
-        oven_summary = oven_controller.get_running_status()
-        centrifuge_summary = centrifuge_controller.get_running_status()
+        robot_summary = self.robot_controller.get_running_status()
+        oven_summary = self.oven_controller.get_running_status()
+        centrifuge_summary = self.centrifuge_controller.get_running_status()
 
         return {
             "status": True,
@@ -1273,8 +1283,15 @@ class ThermalFlowManager:
             }
         }
 
-from devices.robot_core import robot_controller
-from devices.door_core import door_controller
-from devices.centrifuge_core import centrifuge_controller
-from devices.oven_core import oven_controller
-thermal_flow_mgr = ThermalFlowManager(robot_controller, door_controller, centrifuge_controller, oven_controller)
+from devices.mock_devices import (
+    get_robot_controller,
+    get_door_controller,
+    get_centrifuge_controller,
+    get_oven_controller,
+)
+thermal_flow_mgr = ThermalFlowManager(
+    get_robot_controller(),
+    get_door_controller(),
+    get_centrifuge_controller(),
+    get_oven_controller(),
+)

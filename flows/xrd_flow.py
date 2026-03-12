@@ -8,8 +8,14 @@ import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from devices.xrd_core import XRDController, xrd_controller
+from devices.xrd_core import XRDController
+from devices.mock_devices import get_xrd_controller
 from logger import sys_logger as logger
+
+try:
+    import config
+except Exception:
+    config = None
 
 
 class XRDFlowManager:
@@ -28,7 +34,17 @@ class XRDFlowManager:
         # 确认信号事件（用于人工确认步骤）
         self.confirm_event = threading.Event()
         self.confirm_event.set()  # 默认设置为True
-        
+        # 当前等待确认时的提示文案（供编排层 get_status 的 next_action 使用，不依赖步骤日志字符串）
+        self._pending_confirm_message: Optional[str] = None
+
+    def get_pending_confirm(self) -> Optional[Dict[str, Any]]:
+        """若当前处于「等待人工确认」则返回 {\"message\": \"...\"}，否则返回 None。供 experiment get_status 生成 next_action，避免依赖 current_step_info 文案。"""
+        if not self.running or self._pending_confirm_message is None:
+            return None
+        if self.confirm_event.is_set():
+            return None
+        return {"message": self._pending_confirm_message}
+
     def user_confirm(self):
         """前端调用的确认方法"""
         self.logger.log(">>> 人工已确认，流程继续 <<<", "SUCCESS")
@@ -44,20 +60,22 @@ class XRDFlowManager:
     
     def _wait_for_confirm(self, message: str, timeout: Optional[float] = None):
         """等待人工确认"""
+        self._pending_confirm_message = message
         self._log_step(f"等待确认: {message}", "WARN")
         self.confirm_event.clear()
-        
-        start_time = time.time()
-        while not self.confirm_event.is_set():
-            if not self.running:
-                return False
-            if timeout and (time.time() - start_time) > timeout:
-                self._log_step(f"确认超时: {message}", "ERROR")
-                return False
-            time.sleep(0.5)
-        
-        self._log_step(f"确认通过: {message}", "SUCCESS")
-        return True
+        try:
+            start_time = time.time()
+            while not self.confirm_event.is_set():
+                if not self.running:
+                    return False
+                if timeout and (time.time() - start_time) > timeout:
+                    self._log_step(f"确认超时: {message}", "ERROR")
+                    return False
+                time.sleep(0.5)
+            self._log_step(f"确认通过: {message}", "SUCCESS")
+            return True
+        finally:
+            self._pending_confirm_message = None
 
     def _wait_for_test_completion(self, check_interval: float = 5.0, total_samples: int = 1) -> bool:
         """
@@ -70,7 +88,11 @@ class XRDFlowManager:
         self._log_step("等待测试完成...", "INFO")
         start_time = time.time()
         max_wait_time = 60 * 60 * 24  # 最多等待24小时
-        
+        cap = getattr(config, "XRD_WAIT_CAP_SEC", 0) if config else 0
+        if cap > 0:
+            max_wait_time = min(max_wait_time, cap)
+            self._log_step(f"等待测试完成上限 {cap} 秒", "INFO")
+
         while self.running:
             if time.time() - start_time > max_wait_time:
                 self._log_step("等待测试完成超时", "ERROR")
@@ -103,7 +125,11 @@ class XRDFlowManager:
 
         self._log_step("等待升压", "INFO")
         start_time = time.time()
-        max_wait_time = 60 * 60 # 最多等待1hour
+        max_wait_time = 60 * 60  # 最多等待1小时
+        cap = getattr(config, "XRD_WAIT_CAP_SEC", 0) if config else 0
+        if cap > 0:
+            max_wait_time = min(max_wait_time, cap)
+            self._log_step(f"等待升压上限 {cap} 秒", "INFO")
 
         while self.running:
             if time.time() - start_time > max_wait_time:
@@ -125,7 +151,11 @@ class XRDFlowManager:
     def _wait_for_voltage_current_stable(self, check_interval: float = 5.0, voltage: float = 40.0, current: float = 40.0):
         self._log_step("等待电压电流稳定", "INFO")
         start_time = time.time()
-        max_wait_time = 60 * 60 # 最多等待1hour
+        max_wait_time = 60 * 60  # 最多等待1小时
+        cap = getattr(config, "XRD_WAIT_CAP_SEC", 0) if config else 0
+        if cap > 0:
+            max_wait_time = min(max_wait_time, cap)
+            self._log_step(f"等待电压电流稳定上限 {cap} 秒", "INFO")
 
         voltage_threshold = voltage * 0.95
         current_threshold = current * 0.95
@@ -206,7 +236,7 @@ class XRDFlowManager:
         # 4. 等待升压完成
         self._log_step("等待升压完成...", "INFO")
         if not self._wait_for_raise_voltage(check_interval):
-            self._log_step("等待升压超时", "ERROR")
+            self._log_step("退出等待升压", "ERROR")
             return False
         
         # 5. 设置电压电流
@@ -596,7 +626,7 @@ class XRDFlowManager:
 
     def get_summary(self) -> dict:
         """获取XRD流程总结"""
-        xrd_summary = xrd_controller.get_running_status()
+        xrd_summary = self.xrd_controller.get_running_status()
         return {
             "status": True,
             "summary": {
@@ -604,4 +634,4 @@ class XRDFlowManager:
             }
         }
 
-xrd_flow_mgr = XRDFlowManager(xrd_controller)
+xrd_flow_mgr = XRDFlowManager(get_xrd_controller())

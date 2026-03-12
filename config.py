@@ -60,3 +60,7 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 # 设为 true 时，实验流程不连接真实设备，各子流程（配料/热处理/XRD）仅模拟成功，用于本地完整跑通 API
 MOCK_DEVICES = os.getenv("MOCK_DEVICES", "false").lower() in ("true", "1", "yes")
 MOCK_STEP_DELAY = float(os.getenv("MOCK_STEP_DELAY", "1.0"))  # 每步模拟耗时（秒），便于观察阶段切换
+# 燃烧等待时间上限（秒），0 表示不设上限、按曲线真实时长等待。本地/Mock 时可设 BURN_WAIT_CAP_SEC=30 避免长时间阻塞
+BURN_WAIT_CAP_SEC = float(os.getenv("BURN_WAIT_CAP_SEC", "0"))
+# XRD 等待时间上限（秒），0 表示不设上限。作用于：等待测试完成、等待升压、等待电压电流稳定。Mock 时可设 10~20 避免长时间阻塞
+XRD_WAIT_CAP_SEC = float(os.getenv("XRD_WAIT_CAP_SEC", "0"))

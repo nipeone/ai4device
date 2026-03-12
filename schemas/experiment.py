@@ -147,7 +147,7 @@ class ThermalParamsRequest(BaseModel):
 
 class XRDParamsRequest(BaseModel):
     """XRD上样参数（在确认“样品已放入XRD试验台”时可选传入；不传则沿用默认值）"""
-    start_theta: Optional[float] = Field(default=5.0, description="起始角度")
+    start_theta: Optional[float] = Field(default=5.1, description="起始角度")
     end_theta: Optional[float] = Field(default=120.0, description="结束角度")
     increment: Optional[float] = Field(default=0.01, description="步长")
     exp_time: Optional[float] = Field(default=0.1, description="曝光时间")
