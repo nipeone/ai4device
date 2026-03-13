@@ -1267,12 +1267,31 @@ class ThermalFlowManager:
                 self._run_ref_count -= 1
                 self.running = self._run_ref_count > 0
 
-    def get_summary(self) -> dict:
-        """获取热处理流程总结"""
+    def get_summary(self, oven_ids: Optional[List[int]] = None) -> dict:
+        """获取热处理流程总结。
+        oven_ids: 若传入（来自 confirm_thermal_load 的 oven_assignments），则 summary.oven.data 只保留这些炉号的状态；否则返回全部炉子。"""
 
         robot_summary = self.robot_controller.get_running_status()
         oven_summary = self.oven_controller.get_running_status()
         centrifuge_summary = self.centrifuge_controller.get_running_status()
+
+        if oven_ids is not None and len(oven_ids) > 0 and isinstance(oven_summary.get("data"), list):
+            try:
+                oven_id_set = {int(x) for x in oven_ids}
+            except (TypeError, ValueError):
+                oven_id_set = set()
+            def _addr_matches(item: dict) -> bool:
+                addr = item.get("设备地址")
+                if addr is None:
+                    return False
+                try:
+                    return int(addr) in oven_id_set
+                except (TypeError, ValueError):
+                    return False
+            oven_summary = {
+                **oven_summary,
+                "data": [item for item in oven_summary["data"] if _addr_matches(item)],
+            }
 
         return {
             "status": True,

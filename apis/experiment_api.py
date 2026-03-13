@@ -293,6 +293,19 @@ def confirm_xrd_ready(req: Optional[XRDParamsRequest] = None):
     return {"message": "XRD上样确认已接收，开始XRD测试"}
 
 
+@router.post("/confirm_continue_after_error", tags=["实验"])
+def confirm_continue_after_error(resume_phase: Optional[str] = None):
+    """
+    报错后从下一阶段继续执行。仅当 phase=error 且存在可恢复阶段时有效。
+    可选 body 或 query：resume_phase（如 waiting_seal_confirm、waiting_thermal_load、waiting_xrd_ready），
+    不传则使用内部记录的恢复阶段。
+    """
+    out = experiment_orchestrator.confirm_continue_after_error(resume_phase=resume_phase)
+    if out.get("status") == "error":
+        return JSONResponse(status_code=400, content=out)
+    return out
+
+
 @router.post("/stop", tags=["实验"])
 def stop_experiment():
     """

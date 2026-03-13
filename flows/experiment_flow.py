@@ -349,6 +349,10 @@ class ExperimentOrchestrator:
         self._current_xrd_running: Optional[Dict[str, Any]] = None
         # confirm_xrd_ready 时生成并绑定的样品列表，每项 {sample_id, scheme_id, scheme_index}，流程用其执行 XRD 并写结果
         self._pending_xrd_sample_ids: Optional[List[Dict[str, Any]]] = None
+        # 报错后可从下一阶段继续：记录恢复阶段，供 confirm_continue_after_error 使用
+        self._error_resume_phase: Optional[ExperimentPhase] = None
+        # start() 时保存的 mixer_model，恢复流程时需传入 _run_experiment
+        self._mixer_model: Optional[Any] = None
 
     def _set_phase(
         self,
@@ -371,6 +375,17 @@ class ExperimentOrchestrator:
                 )
             except Exception as e:
                 logger.log(f"持久化实验阶段失败: {e}", "WARN")
+
+    def _set_phase_error(
+        self,
+        error_message: str,
+        resume_phase: Optional[ExperimentPhase] = None,
+        step_info: str = "",
+    ) -> None:
+        """设置 ERROR 阶段并记录可恢复的下一阶段（供 confirm_continue_after_error 使用）。"""
+        with self._lock:
+            self._error_resume_phase = resume_phase
+        self._set_phase(ExperimentPhase.ERROR, step_info=step_info or "实验异常结束", error_message=error_message)
 
     def _get_step_info_from_flows(self) -> str:
         """从当前活跃子流程取步骤信息"""
@@ -435,16 +450,47 @@ class ExperimentOrchestrator:
                 out = {"status": False, "message": str(e), "summary": {}}
         elif phase == ExperimentPhase.THERMAL_RUNNING:
             try:
-                out = thermal_flow_mgr.get_summary()
-                curve_points = self._resolve_thermal_curve_points()
-                if curve_points and out.get("summary") is not None:
-                    out.setdefault("summary", {})["temperature_curve"] = [
-                        {
-                            "time": getattr(p, "time", p.get("time", 0.0) if isinstance(p, dict) else 0.0),
-                            "temperature": getattr(p, "temperature", p.get("temperature", 0.0) if isinstance(p, dict) else 0.0),
-                        }
-                        for p in curve_points
-                    ]
+                oven_ids = None
+                with self._lock:
+                    thermal_params = self._thermal_params or {}
+                assignments = thermal_params.get("oven_assignments") or []
+                if isinstance(assignments, list) and len(assignments) > 0:
+                    oven_ids = [int(a.get("oven_id")) for a in assignments if isinstance(a, dict) and a.get("oven_id") is not None]
+                if not oven_ids and thermal_params:
+                    oven_ids = [int(thermal_params.get("oven_id", 1))]
+                out = thermal_flow_mgr.get_summary(oven_ids=oven_ids)
+                if out.get("summary") is not None:
+                    summary = out["summary"]
+                    # 按炉子解析温度曲线：多炉时每个炉子对应 scheme_index 的曲线不同
+                    def _points_to_list(pts):
+                        return [
+                            {
+                                "time": getattr(p, "time", p.get("time", 0.0) if isinstance(p, dict) else 0.0),
+                                "temperature": getattr(p, "temperature", p.get("temperature", 0.0) if isinstance(p, dict) else 0.0),
+                            }
+                            for p in pts
+                        ]
+                    if isinstance(assignments, list) and len(assignments) > 0 and getattr(self, "_raw_req", None) is not None:
+                        temperature_curves = {}
+                        for a in assignments:
+                            if not isinstance(a, dict):
+                                continue
+                            oven_id = a.get("oven_id")
+                            scheme_idx = int(a.get("scheme_index", 0))
+                            try:
+                                curve_points = llm_output_to_curve_points_for_scheme_index(self._raw_req, scheme_idx)
+                            except Exception:
+                                curve_points = self._resolve_thermal_curve_points()
+                            if curve_points:
+                                lst = _points_to_list(curve_points)
+                                if oven_id is not None:
+                                    temperature_curves[str(int(oven_id))] = lst
+                        if temperature_curves:
+                            summary["temperature_curves"] = temperature_curves
+                    else:
+                        curve_points = self._resolve_thermal_curve_points()
+                        if curve_points:
+                            summary["temperature_curves"] = {str(int(oven_id)): _points_to_list(curve_points) for oven_id in oven_ids}
             except Exception as e:
                 out = {"status": False, "message": str(e), "summary": {}}
         elif phase == ExperimentPhase.ERROR:
@@ -511,211 +557,219 @@ class ExperimentOrchestrator:
                 return
             time.sleep(1)
 
-    def _run_experiment(self, mixer_model: Any) -> None:
-        """在后台线程中按状态机执行各阶段（配料 -> 熔封确认 -> 热处理 -> XRD确认 -> XRD测试）"""
+    def _run_experiment(self, mixer_model: Any, start_from_phase: Optional[ExperimentPhase] = None) -> None:
+        """在后台线程中按状态机执行各阶段（配料 -> 熔封确认 -> 热处理 -> XRD确认 -> XRD测试）。
+        start_from_phase 非空时从该阶段开始执行（跳过之前阶段），用于报错后继续流程。"""
         mock = _MOCK_DEVICES
+        PHASE_ORDER = [
+            ExperimentPhase.MIXING,
+            ExperimentPhase.WAITING_SEAL_CONFIRM,
+            ExperimentPhase.LOADING,
+            ExperimentPhase.WAITING_THERMAL_LOAD,
+            ExperimentPhase.THERMAL_RUNNING,
+            ExperimentPhase.WAITING_XRD_READY,
+            ExperimentPhase.XRD_RUNNING,
+        ]
+
+        def _skip(phase: ExperimentPhase) -> bool:
+            """为 True 时跳过以该阶段为起点的整块逻辑（因从更晚阶段恢复）。"""
+            if start_from_phase is None or phase is None:
+                return False
+            try:
+                return PHASE_ORDER.index(start_from_phase) > PHASE_ORDER.index(phase)
+            except ValueError:
+                return False
+
         try:
-            # ---------- 1. 配料 ----------
-            if self._stop_requested:
-                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                return
-            self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
-            logger.log("实验流程：开始配料" + (" [Mock 设备]" if mock else ""), "INFO")
-            mix_result = mix_flow_mgr.run(mixer_model)
-            if self._stop_requested:
-                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                return
-            if not mix_result.get("status"):
-                self._set_phase(
-                    ExperimentPhase.ERROR,
-                    error_message=mix_result.get("message", "配料失败"),
-                )
-                return
-            self._set_phase(ExperimentPhase.WAITING_SEAL_CONFIRM, "配料已完成，等待熔封确认")
-            logger.log("等待熔封完成，请调用 POST /api/experiment/flux/confirm_seal", "WARN")
-
-            self._seal_confirm.clear()
-            if not self._wait_confirm_or_stop(self._seal_confirm, self._confirm_timeout):
+            # ---------- 1. 配料 -> 熔封确认 -> 上料 ----------
+            if not _skip(ExperimentPhase.MIXING):
                 if self._stop_requested:
-                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                else:
-                    self._set_phase(ExperimentPhase.ERROR, error_message="等待熔封确认超时")
-                return
-            logger.log("熔封已确认", "INFO")
-
-            self._set_phase(ExperimentPhase.LOADING, "上料流程启动" + (" [Mock]" if mock else ""))
-            time.sleep(MOCK_STEP_DURATION_MIN)
+                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    return
+                self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
+                logger.log("实验流程：开始配料" + (" [Mock 设备]" if mock else ""), "INFO")
+                mix_result = mix_flow_mgr.run(mixer_model)
+                if self._stop_requested:
+                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    return
+                if not mix_result.get("status"):
+                    self._set_phase_error(
+                        mix_result.get("message", "配料失败"),
+                        resume_phase=ExperimentPhase.WAITING_SEAL_CONFIRM,
+                    )
+                    return
+                self._set_phase(ExperimentPhase.WAITING_SEAL_CONFIRM, "配料已完成，等待熔封确认")
+                logger.log("等待熔封完成，请调用 POST /api/experiment/flux/confirm_seal", "WARN")
+                self._seal_confirm.clear()
+                if not self._wait_confirm_or_stop(self._seal_confirm, self._confirm_timeout):
+                    if self._stop_requested:
+                        self._set_phase_error("用户停止实验", resume_phase=None)
+                    else:
+                        self._set_phase_error("等待熔封确认超时", resume_phase=ExperimentPhase.WAITING_THERMAL_LOAD)
+                    return
+                logger.log("熔封已确认", "INFO")
+                self._set_phase(ExperimentPhase.LOADING, "上料流程启动" + (" [Mock]" if mock else ""))
+                time.sleep(MOCK_STEP_DURATION_MIN)
 
             # ---------- 2. 等待加热炉上料确认 ----------
-            if self._stop_requested:
-                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                return
-            self._set_phase(ExperimentPhase.WAITING_THERMAL_LOAD, "请将样品放入加热炉后调用 confirm_thermal_load")
-            logger.log("等待加热炉上料确认，请调用 POST /api/experiment/flux/confirm_thermal_load", "WARN")
-
-            self._thermal_load_confirm.clear()
-            if not self._wait_confirm_or_stop(self._thermal_load_confirm, self._confirm_timeout):
+            if not _skip(ExperimentPhase.WAITING_THERMAL_LOAD):
                 if self._stop_requested:
-                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                else:
-                    self._set_phase(ExperimentPhase.ERROR, error_message="等待加热炉上料确认超时")
-                return
-            logger.log("加热炉上料已确认，开始热处理", "INFO")
+                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    return
+                self._set_phase(ExperimentPhase.WAITING_THERMAL_LOAD, "请将样品放入加热炉后调用 confirm_thermal_load")
+                logger.log("等待加热炉上料确认，请调用 POST /api/experiment/flux/confirm_thermal_load", "WARN")
+                self._thermal_load_confirm.clear()
+                if not self._wait_confirm_or_stop(self._thermal_load_confirm, self._confirm_timeout):
+                    if self._stop_requested:
+                        self._set_phase_error("用户停止实验", resume_phase=None)
+                    else:
+                        self._set_phase_error("等待加热炉上料确认超时", resume_phase=ExperimentPhase.WAITING_THERMAL_LOAD)
+                    return
+                logger.log("加热炉上料已确认，开始热处理", "INFO")
 
-            # ---------- 3. 热处理 ----------
-            if self._stop_requested:
-                self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                return
+            # ---------- 3. 热处理（恢复时 start_from_phase==WAITING_XRD_READY 则跳过整段）----------
             thermal_params = self._thermal_params or {}
             oven_assignments = thermal_params.get("oven_assignments") or []
-            # mock 下仅需 oven_assignments 即可走多炉流水线；真实设备还需 推荐实验方案列表
             use_multi_oven = (
                 isinstance(oven_assignments, list)
                 and len(oven_assignments) > 0
                 and (getattr(self._raw_req, "推荐实验方案列表", None) is not None or mock)
             )
-            self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中" + (" [Mock]" if mock else ""))
-            if use_multi_oven:
-                # 流水线：炉子加热结束即入队，下游单通道（离心/XRD 各一套）按完成顺序依次做「等待XRD上样 → XRD」
-                scheme_manifest = (thermal_params.get("scheme_manifest") or []) if isinstance(thermal_params.get("scheme_manifest"), list) else []
-                if not scheme_manifest:
-                    scheme_manifest = [{"scheme_index": 0, "scheme_id": "方案0", "scheme_type": ""}]
-                xrd_params = self._xrd_params or {}
-                batch_queue = queue.Queue()
+            if not _skip(ExperimentPhase.THERMAL_RUNNING):
+                if self._stop_requested:
+                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    return
+                self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中" + (" [Mock]" if mock else ""))
+                if use_multi_oven:
+                    # 流水线：炉子加热结束即入队，下游单通道（离心/XRD 各一套）按完成顺序依次做「等待XRD上样 → XRD」
+                    scheme_manifest = (thermal_params.get("scheme_manifest") or []) if isinstance(thermal_params.get("scheme_manifest"), list) else []
+                    if not scheme_manifest:
+                        scheme_manifest = [{"scheme_index": 0, "scheme_id": "方案0", "scheme_type": ""}]
+                    xrd_params = self._xrd_params or {}
+                    batch_queue = queue.Queue()
 
-                def _run_one_thermal(assign: dict):
-                    oven_id = int(assign.get("oven_id", 0))
-                    scheme_idx = int(assign.get("scheme_index", 0))
-                    qty = int(assign.get("qty", 1))
-                    curve_points = llm_output_to_curve_points_for_scheme_index(self._raw_req, scheme_idx)
-                    return oven_id, thermal_flow_mgr.run(oven_id, qty, curve_points)
+                    def _run_one_thermal(assign: dict):
+                        oven_id = int(assign.get("oven_id", 0))
+                        scheme_idx = int(assign.get("scheme_index", 0))
+                        qty = int(assign.get("qty", 1))
+                        curve_points = llm_output_to_curve_points_for_scheme_index(self._raw_req, scheme_idx)
+                        return oven_id, thermal_flow_mgr.run(oven_id, qty, curve_points)
 
-                def thermal_producer():
-                    try:
-                        with ThreadPoolExecutor(max_workers=len(oven_assignments)) as executor:
-                            futures = {executor.submit(_run_one_thermal, a): a for a in oven_assignments}
-                            for future in as_completed(futures):
-                                if self._stop_requested:
-                                    thermal_flow_mgr.stop()
-                                    batch_queue.put(("fail", "用户停止实验"))
-                                    return
-                                try:
-                                    oven_id, one = future.result()
-                                    assign = futures.get(future, {})
-                                    scheme_idx = int(assign.get("scheme_index", 0))
-                                    qty = int(assign.get("qty", 1))
-                                    if not one.get("status"):
+                    def thermal_producer():
+                        try:
+                            with ThreadPoolExecutor(max_workers=len(oven_assignments)) as executor:
+                                futures = {executor.submit(_run_one_thermal, a): a for a in oven_assignments}
+                                for future in as_completed(futures):
+                                    if self._stop_requested:
                                         thermal_flow_mgr.stop()
-                                        batch_queue.put(("fail", one.get("message", "热处理失败")))
+                                        batch_queue.put(("fail", "用户停止实验"))
                                         return
-                                    scheme = scheme_manifest[scheme_idx] if scheme_idx < len(scheme_manifest) else {}
-                                    batch_queue.put(("ok", {"oven_id": oven_id, "scheme_idx": scheme_idx, "qty": qty, "scheme": scheme}))
-                                except Exception as e:
-                                    assign = futures.get(future, {})
-                                    lid = assign.get("oven_id", "?")
-                                    thermal_flow_mgr.stop()
-                                    batch_queue.put(("fail", f"炉{lid} 热处理异常: {e}"))
-                                    return
-                            batch_queue.put(("done", None))
-                    except Exception as e:
-                        batch_queue.put(("fail", str(e)))
+                                    try:
+                                        oven_id, one = future.result()
+                                        assign = futures.get(future, {})
+                                        scheme_idx = int(assign.get("scheme_index", 0))
+                                        qty = int(assign.get("qty", 1))
+                                        if not one.get("status"):
+                                            thermal_flow_mgr.stop()
+                                            batch_queue.put(("fail", one.get("message", "热处理失败")))
+                                            return
+                                        scheme = scheme_manifest[scheme_idx] if scheme_idx < len(scheme_manifest) else {}
+                                        batch_queue.put(("ok", {"oven_id": oven_id, "scheme_idx": scheme_idx, "qty": qty, "scheme": scheme}))
+                                    except Exception as e:
+                                        assign = futures.get(future, {})
+                                        lid = assign.get("oven_id", "?")
+                                        thermal_flow_mgr.stop()
+                                        batch_queue.put(("fail", f"炉{lid} 热处理异常: {e}"))
+                                        return
+                                batch_queue.put(("done", None))
+                        except Exception as e:
+                            batch_queue.put(("fail", str(e)))
 
-                prod_thread = threading.Thread(target=thermal_producer, daemon=False)
-                prod_thread.start()
-                with self._lock:
-                    self._last_results = []
-                exp_id = self._experiment_id or ""
-                multi_oven_success = True
-                while multi_oven_success:
-                    item = batch_queue.get()
-                    kind, payload = item[0], item[1]
-                    if kind == "fail":
-                        self._set_phase(ExperimentPhase.ERROR, error_message=payload)
-                        multi_oven_success = False
-                        break
-                    if kind == "done":
-                        break
-                    batch = payload
-                    oven_id, scheme_idx, qty, scheme = batch["oven_id"], batch["scheme_idx"], batch["qty"], batch["scheme"]
-                    if self._stop_requested:
-                        self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                        multi_oven_success = False
-                        break
+                    prod_thread = threading.Thread(target=thermal_producer, daemon=False)
+                    prod_thread.start()
                     with self._lock:
-                        self._current_xrd_batch = {"oven_id": oven_id, "scheme_index": scheme_idx, "scheme_id": scheme.get("scheme_id"), "qty": qty}
-                    self._set_phase(ExperimentPhase.WAITING_XRD_READY, f"请将炉{oven_id}的样品放入XRD试验台后调用 confirm_xrd_ready")
-                    logger.log(f"等待炉{oven_id}|{scheme.get("scheme_id")}的样品放入XRD试验台并确认", "WARN")
-                    self._xrd_ready_confirm.clear()
-                    if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
+                        self._last_results = []
+                    exp_id = self._experiment_id or ""
+                    multi_oven_success = True
+                    while multi_oven_success:
+                        item = batch_queue.get()
+                        kind, payload = item[0], item[1]
+                        if kind == "fail":
+                            self._set_phase_error(payload, resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                            multi_oven_success = False
+                            break
+                        if kind == "done":
+                            break
+                        batch = payload
+                        oven_id, scheme_idx, qty, scheme = batch["oven_id"], batch["scheme_idx"], batch["qty"], batch["scheme"]
                         if self._stop_requested:
-                            self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                        else:
-                            self._set_phase(ExperimentPhase.ERROR, error_message="等待XRD上样确认超时")
-                        multi_oven_success = False
-                        break
-                    logger.log(f"炉{oven_id} XRD上样已确认，开始XRD测试", "INFO")
-                    with self._lock:
-                        self._current_xrd_batch = None
-                        pending = self._pending_xrd_sample_ids or []
-                        self._pending_xrd_sample_ids = None
-                    batch_sample_ids = [p["sample_id"] for p in pending]
-                    if not batch_sample_ids:
-                        batch_sample_ids = [f"{scheme.get('scheme_id', '方案')}_{uuid.uuid4().hex[:8]}"]
-                    if self._stop_requested:
-                        self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
-                        multi_oven_success = False
-                        break
-                    with self._lock:
-                        self._current_xrd_running = {
-                            "scheme_index": scheme_idx,
-                            "scheme_id": scheme.get("scheme_id"),
-                            "sample_id": batch_sample_ids[0] if batch_sample_ids else None,
-                        }
-                    self._set_phase(ExperimentPhase.XRD_RUNNING, f"XRD测试执行中（炉{oven_id}）")
-                    # 每批使用当前 confirm_xrd_ready 合并后的 XRD 参数（用户可能每炉传不同参数）
-                    cur_xrd = self._xrd_params or {}
-                    st = float(cur_xrd.get("start_theta", 5.1))
-                    et = float(cur_xrd.get("end_theta", 120.0))
-                    inc = float(cur_xrd.get("increment", 0.01))
-                    exp = float(cur_xrd.get("exp_time", 0.1))
-                    if len(batch_sample_ids) == 1:
-                        xrd_result = xrd_flow_mgr.run(
-                            single=True,
-                            sample_id=batch_sample_ids[0],
-                            start_theta=st,
-                            end_theta=et,
-                            increment=inc,
-                            exp_time=exp,
-                        )
-                    else:
-                        samples = [
-                            {
-                                "sample_id": sid,
-                                "start_theta": st,
-                                "end_theta": et,
-                                "increment": inc,
-                                "exp_time": exp,
-                                "station": i + 1,
+                            self._set_phase_error("用户停止实验", resume_phase=None)
+                            multi_oven_success = False
+                            break
+                        with self._lock:
+                            self._current_xrd_batch = {"oven_id": oven_id, "scheme_index": scheme_idx, "scheme_id": scheme.get("scheme_id"), "qty": qty}
+                        self._set_phase(ExperimentPhase.WAITING_XRD_READY, f"请将炉{oven_id}的样品放入XRD试验台后调用 confirm_xrd_ready")
+                        logger.log(f"等待炉{oven_id}|{scheme.get("scheme_id")}的样品放入XRD试验台并确认", "WARN")
+                        self._xrd_ready_confirm.clear()
+                        if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
+                            if self._stop_requested:
+                                self._set_phase_error("用户停止实验", resume_phase=None)
+                            else:
+                                self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                            multi_oven_success = False
+                            break
+                            logger.log(f"炉{oven_id} XRD上样已确认，开始XRD测试", "INFO")
+                        with self._lock:
+                            self._current_xrd_batch = None
+                            pending = self._pending_xrd_sample_ids or []
+                            self._pending_xrd_sample_ids = None
+                        batch_sample_ids = [p["sample_id"] for p in pending]
+                        if not batch_sample_ids:
+                            batch_sample_ids = [f"{scheme.get('scheme_id', '方案')}_{uuid.uuid4().hex[:8]}"]
+                        if self._stop_requested:
+                            self._set_phase_error("用户停止实验", resume_phase=None)
+                            multi_oven_success = False
+                            break
+                        with self._lock:
+                            self._current_xrd_running = {
                                 "scheme_index": scheme_idx,
                                 "scheme_id": scheme.get("scheme_id"),
+                                "sample_id": batch_sample_ids[0] if batch_sample_ids else None,
                             }
-                            for i, sid in enumerate(batch_sample_ids)
-                        ]
-                        xrd_result = xrd_flow_mgr.run(single=False, samples=samples)
-                    if not (isinstance(xrd_result, dict) and xrd_result.get("status")):
-                        msg = xrd_result.get("message", "XRD测试失败") if isinstance(xrd_result, dict) else str(xrd_result)
-                        self._set_phase(ExperimentPhase.ERROR, error_message=msg)
-                        multi_oven_success = False
-                        break
-                    try:
-                        if len(batch_sample_ids) == 1:
+                        self._set_phase(ExperimentPhase.XRD_RUNNING, f"XRD测试执行中（炉{oven_id}）")
+                        # 每批使用当前 confirm_xrd_ready 合并后的 XRD 参数（用户可能每炉传不同参数）
+                        cur_xrd = self._xrd_params or {}
+                        st = float(cur_xrd.get("start_theta", 5.1))
+                        et = float(cur_xrd.get("end_theta", 120.0))
+                        inc = float(cur_xrd.get("increment", 0.01))
+                        exp = float(cur_xrd.get("exp_time", 0.1))
+                        # XRD 单通道单工位：多样品时在同一工位依次跑单样品流程，不调用多样品多工位模式
+                        xrd_result = None
+                        for i, sid in enumerate(batch_sample_ids):
+                            with self._lock:
+                                self._current_xrd_running = {
+                                    "scheme_index": scheme_idx,
+                                    "scheme_id": scheme.get("scheme_id"),
+                                    "sample_id": sid,
+                                }
+                            one = xrd_flow_mgr.run(
+                                single=True,
+                                sample_id=sid,
+                                start_theta=st,
+                                end_theta=et,
+                                increment=inc,
+                                exp_time=exp,
+                            )
+                            if not (isinstance(one, dict) and one.get("status")):
+                                xrd_result = one
+                                break
                             latest = xrd_flow_mgr.get_latest_data()
                             if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
                                 d = latest.get("data")
                                 with self._lock:
                                     self._last_results.append({
                                         "experiment_id": exp_id,
-                                        "sample_id": d.get("sample_id") or batch_sample_ids[0],
+                                        "sample_id": d.get("sample_id") or sid,
                                         "scheme_id": scheme.get("scheme_id"),
                                         "scheme_index": scheme_idx,
                                         "scheme_type": scheme.get("scheme_type", ""),
@@ -723,75 +777,73 @@ class ExperimentOrchestrator:
                                         "intensity": d.get("intensity"),
                                         "timestamp": d.get("timestamp"),
                                     })
-                        else:
-                            xrd_results = xrd_result.get("results") or []
-                            for i, r in enumerate(xrd_results):
-                                data = r.get("data") or {}
-                                theta2 = data.get("2theta") or data.get("theta2")
-                                with self._lock:
-                                    self._last_results.append({
-                                        "experiment_id": exp_id,
-                                        "sample_id": r.get("sample_id") or (batch_sample_ids[i] if i < len(batch_sample_ids) else scheme.get("scheme_id")),
-                                        "scheme_id": scheme.get("scheme_id"),
-                                        "scheme_index": scheme_idx,
-                                        "scheme_type": scheme.get("scheme_type", ""),
-                                        "theta2": theta2,
-                                        "intensity": data.get("intensity"),
-                                        "timestamp": data.get("timestamp"),
-                                    })
-                    except Exception as e:
-                        logger.log(f"保存炉{oven_id} XRD结果时忽略异常: {e}", "WARN")
-                try:
-                    prod_thread.join(timeout=2.0)
-                except Exception:
-                    pass
-                if not multi_oven_success:
-                    return
-                with self._lock:
-                    to_persist = self._last_results if self._last_results else []
-                if exp_id and to_persist:
+                        if xrd_result is not None:
+                            msg = xrd_result.get("message", "XRD测试失败") if isinstance(xrd_result, dict) else str(xrd_result)
+                            self._set_phase_error(msg, resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                            multi_oven_success = False
+                            break
                     try:
-                        experiment_persistence.insert_xrd_results(exp_id, to_persist)
-                    except Exception as e:
-                        logger.log(f"持久化XRD结果失败: {e}", "WARN")
-                self._set_phase(ExperimentPhase.COMPLETED, "实验流程已全部完成")
-                logger.log("实验总流程完成", "SUCCESS")
-                return
-            else:
-                oven_id = int(thermal_params.get("oven_id", 1))
-                qty = int(thermal_params.get("qty", 1))
-                curve_points = self._resolve_thermal_curve_points()
-                thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
-            if not thermal_result.get("status"):
-                self._set_phase(
-                    ExperimentPhase.ERROR,
-                    error_message=thermal_result.get("message", "热处理失败"),
-                )
-                return
-            # 单炉路径：等全部热处理完成后，再统一等待XRD上样并做一次XRD
-            if not use_multi_oven:
-                self._set_phase(ExperimentPhase.WAITING_XRD_READY, "热处理已完成，等待XRD上样")
-                logger.log(
-                    "请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
-                    "WARN",
-                )
+                        prod_thread.join(timeout=2.0)
+                    except Exception:
+                        pass
+                    if not multi_oven_success:
+                        return
+                    with self._lock:
+                        to_persist = self._last_results if self._last_results else []
+                    if exp_id and to_persist:
+                        try:
+                            experiment_persistence.insert_xrd_results(exp_id, to_persist)
+                        except Exception as e:
+                            logger.log(f"持久化XRD结果失败: {e}", "WARN")
+                    self._set_phase(ExperimentPhase.COMPLETED, "实验流程已全部完成")
+                    logger.log("实验总流程完成", "SUCCESS")
+                    return
+                else:
+                    oven_id = int(thermal_params.get("oven_id", 1))
+                    qty = int(thermal_params.get("qty", 1))
+                    curve_points = self._resolve_thermal_curve_points()
+                    thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
+                if not thermal_result.get("status"):
+                    self._set_phase_error(
+                        thermal_result.get("message", "热处理失败"),
+                        resume_phase=ExperimentPhase.WAITING_XRD_READY,
+                    )
+                    return
+                # 单炉路径：等全部热处理完成后，再统一等待XRD上样并做一次XRD
+                if not use_multi_oven:
+                    self._set_phase(ExperimentPhase.WAITING_XRD_READY, "热处理已完成，等待XRD上样")
+                    logger.log(
+                        "请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
+                        "WARN",
+                    )
 
                 if self._stop_requested:
-                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                    self._set_phase_error("用户停止实验", resume_phase=None)
                     return
                 self._xrd_ready_confirm.clear()
                 if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
                     if self._stop_requested:
-                        self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                        self._set_phase_error("用户停止实验", resume_phase=None)
                     else:
-                        self._set_phase(ExperimentPhase.ERROR, error_message="等待XRD上样确认超时")
+                        self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
                     return
                 logger.log("XRD上样已确认，开始XRD测试", "INFO")
 
-            # ---------- 4. XRD 测试（仅单炉路径；多炉已在上面流水线中按批完成） ----------
-            if not use_multi_oven:
+            # ---------- 4. XRD 测试（仅单炉路径；多炉已在上面流水线中按批完成；恢复时 start_from_phase==WAITING_XRD_READY 也走此处）----------
+            if not use_multi_oven or start_from_phase == ExperimentPhase.WAITING_XRD_READY:
+                if start_from_phase == ExperimentPhase.WAITING_XRD_READY:
+                    self._set_phase(ExperimentPhase.WAITING_XRD_READY, "热处理已完成，等待XRD上样（恢复流程）")
+                    logger.log("请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready", "WARN")
+                    self._xrd_ready_confirm.clear()
+                    if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
+                        if self._stop_requested:
+                            self._set_phase_error("用户停止实验", resume_phase=None)
+                        else:
+                            self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                        return
+                    logger.log("XRD上样已确认，开始XRD测试", "INFO")
                 if self._stop_requested:
-                    self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+                    self._set_phase_error("用户停止实验", resume_phase=None)
                     return
                 scheme_manifest = (thermal_params.get("scheme_manifest") or []) if isinstance(thermal_params.get("scheme_manifest"), list) else []
                 if not scheme_manifest:
@@ -816,84 +868,49 @@ class ExperimentOrchestrator:
                 end_theta = xrd_params.get("end_theta", 120.0)
                 increment = xrd_params.get("increment", 0.01)
                 exp_time = xrd_params.get("exp_time", 0.1)
-                if len(scheme_manifest) == 1:
-                    xrd_result = xrd_flow_mgr.run(
+                # XRD 单通道单工位：多样品时在同一工位依次跑单样品流程，不调用多样品多工位模式
+                exp_id = self._experiment_id or ""
+                with self._lock:
+                    self._last_results = []
+                xrd_failed = None
+                for i, sample_id in enumerate(sample_ids):
+                    scheme_idx, scheme_id = scheme_info_list[i] if i < len(scheme_info_list) else (i, None)
+                    m = scheme_manifest[scheme_idx] if scheme_idx < len(scheme_manifest) else {}
+                    with self._lock:
+                        self._current_xrd_running = {
+                            "scheme_index": scheme_idx,
+                            "scheme_id": scheme_id or m.get("scheme_id"),
+                            "sample_id": sample_id,
+                        }
+                    one = xrd_flow_mgr.run(
                         single=True,
-                        sample_id=sample_ids[0],
+                        sample_id=sample_id,
                         start_theta=start_theta,
                         end_theta=end_theta,
                         increment=increment,
                         exp_time=exp_time,
                     )
-                else:
-                    samples = [
-                        {
-                            "sample_id": sample_id,
-                            "start_theta": start_theta,
-                            "end_theta": end_theta,
-                            "increment": increment,
-                            "exp_time": exp_time,
-                            "station": i + 1,
-                            "scheme_index": scheme_info_list[i][0] if i < len(scheme_info_list) else i,
-                            "scheme_id": scheme_info_list[i][1] if i < len(scheme_info_list) else None,
-                        }
-                        for i, sample_id in enumerate(sample_ids)
-                    ]
-                    xrd_result = xrd_flow_mgr.run(single=False, samples=samples)
-                if not (isinstance(xrd_result, dict) and xrd_result.get("status")):
-                    msg = (
-                        str(xrd_result)
-                        if not isinstance(xrd_result, dict)
-                        else xrd_result.get("message", "XRD测试失败")
-                    )
-                    self._set_phase(ExperimentPhase.ERROR, error_message=msg)
-                    return
-                # 实验成功完成：从 XRD 流程获取数据，按配方（scheme_id）关联保存
-                exp_id = self._experiment_id or ""
-                try:
-                    if len(scheme_manifest) == 1:
-                        latest = xrd_flow_mgr.get_latest_data()
-                        if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
-                            d = latest.get("data")
-                            with self._lock:
-                                self._last_results = [{
-                                    "experiment_id": exp_id,
-                                    "sample_id": d.get("sample_id") or sample_ids[0],
-                                    "scheme_id": scheme_manifest[0].get("scheme_id"),
-                                    "scheme_index": scheme_manifest[0].get("scheme_index"),
-                                    "scheme_type": scheme_manifest[0].get("scheme_type", ""),
-                                    "theta2": d.get("theta2"),
-                                    "intensity": d.get("intensity"),
-                                    "timestamp": d.get("timestamp"),
-                                }]
-                        else:
-                            with self._lock:
-                                self._last_results = []
-                    else:
-                        xrd_results = xrd_result.get("results") or []
-                        built = []
-                        for i, r in enumerate(xrd_results):
-                            scheme_idx, sid = scheme_info_list[i] if i < len(scheme_info_list) else (i, None)
-                            m = scheme_manifest[scheme_idx] if scheme_idx < len(scheme_manifest) else {}
-                            data = r.get("data") or {}
-                            theta2 = data.get("2theta") or data.get("theta2")
-                            intensity = data.get("intensity")
-                            built.append({
-                                "experiment_id": exp_id,
-                                "sample_id": r.get("sample_id") or (sample_ids[i] if i < len(sample_ids) else sid),
-                                "scheme_id": sid or m.get("scheme_id"),
-                                "scheme_index": scheme_idx if scheme_idx < len(scheme_manifest) else m.get("scheme_index", i),
-                                "scheme_type": m.get("scheme_type", ""),
-                                "theta2": theta2,
-                                "intensity": intensity,
-                                "timestamp": data.get("timestamp"),
-                            })
+                    if not (isinstance(one, dict) and one.get("status")):
+                        xrd_failed = one
+                        break
+                    latest = xrd_flow_mgr.get_latest_data()
+                    if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
+                        d = latest.get("data")
                         with self._lock:
-                            self._last_results = built
-                except Exception as e:
-                    logger.log(f"保存XRD结果时忽略异常: {e}", "WARN")
-                    with self._lock:
-                        self._last_results = []
+                            self._last_results.append({
+                                "experiment_id": exp_id,
+                                "sample_id": d.get("sample_id") or sample_id,
+                                "scheme_id": scheme_id or m.get("scheme_id"),
+                                "scheme_index": scheme_idx,
+                                "scheme_type": m.get("scheme_type", ""),
+                                "theta2": d.get("theta2"),
+                                "intensity": d.get("intensity"),
+                                "timestamp": d.get("timestamp"),
+                            })
+                if xrd_failed is not None:
+                    msg = str(xrd_failed) if not isinstance(xrd_failed, dict) else xrd_failed.get("message", "XRD测试失败")
+                    self._set_phase_error(msg, resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                    return
                 with self._lock:
                     to_persist = (
                         self._last_results if self._last_results else []
@@ -1087,6 +1104,18 @@ class ExperimentOrchestrator:
                     body_data={},
                     body_schema=[],
                 )
+        elif phase == ExperimentPhase.ERROR:
+            with self._lock:
+                resume_phase = self._error_resume_phase
+            if resume_phase is not None:
+                next_action = NextAction(
+                    method="POST",
+                    path="/api/experiment/confirm_continue_after_error",
+                    body_data={"resume_phase": resume_phase.value},
+                    body_schema=[
+                        NextActionParam(name="resume_phase", type="string", required=False, description="从该阶段继续执行，与当前错误可恢复阶段一致", default=None),
+                    ],
+                )
         sub_flow = (
             "mix" if phase == ExperimentPhase.MIXING else "load"
             if phase == ExperimentPhase.LOADING else "thermal"
@@ -1229,6 +1258,47 @@ class ExperimentOrchestrator:
             self._pending_xrd_sample_ids = pending
         self._xrd_ready_confirm.set()
         logger.log("XRD上样确认已接收，已生成并绑定 sample_id", "INFO")
+
+    def confirm_continue_after_error(self, resume_phase: Optional[str] = None) -> Dict[str, Any]:
+        """
+        报错后从下一阶段继续执行。仅当 phase=error 且存在可恢复阶段时有效。
+        resume_phase 可选，不传则使用内部记录的 _error_resume_phase。
+        返回 {"status": "ok", "message": "...", "resume_phase": "..."} 或 {"status": "error", "message": "..."}。
+        """
+        with self._lock:
+            if self._phase != ExperimentPhase.ERROR:
+                return {"status": "error", "message": "当前未处于报错状态，无需恢复"}
+            phase_to_resume = self._error_resume_phase
+            if phase_to_resume is None and resume_phase is not None:
+                try:
+                    phase_to_resume = ExperimentPhase(resume_phase)
+                except ValueError:
+                    return {"status": "error", "message": f"无效的 resume_phase: {resume_phase}"}
+            if phase_to_resume is None:
+                return {"status": "error", "message": "该错误不可恢复或未记录恢复阶段"}
+            if self._mixer_model is None:
+                return {"status": "error", "message": "缺少实验上下文，无法恢复"}
+            if self._runner_thread is not None and self._runner_thread.is_alive():
+                return {"status": "error", "message": "已有流程在运行"}
+            self._error_message = None
+            self._error_resume_phase = None
+            self._phase = phase_to_resume
+            self._step_info = f"从 {phase_to_resume.value} 恢复执行"
+            self._stop_requested = False
+            mixer_model = self._mixer_model
+        try:
+            experiment_persistence.update_experiment_phase(self._experiment_id or "", phase_to_resume.value, None)
+        except Exception as e:
+            logger.log(f"持久化恢复阶段失败: {e}", "WARN")
+        logger.log(f"用户确认从 {phase_to_resume.value} 继续执行", "INFO")
+        self._runner_thread = threading.Thread(
+            target=self._run_experiment,
+            args=(mixer_model,),
+            kwargs={"start_from_phase": phase_to_resume},
+            daemon=True,
+        )
+        self._runner_thread.start()
+        return {"status": "ok", "message": f"已从 {phase_to_resume.value} 继续执行", "resume_phase": phase_to_resume.value}
 
     def stop(self) -> bool:
         """

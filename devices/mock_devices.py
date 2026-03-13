@@ -78,7 +78,22 @@ class MockRobotController:
         return True
 
     def get_running_status(self) -> dict:
-        return {"status": "success", "data": {}}
+        # 与 robot_core.get_running_status 一致：PlcStatus 结构，供 thermal_flow.get_summary 的 summary.robot 使用
+        return {
+            "status": "success",
+            "data": {
+                "plc_connected": self.is_connected,
+                "m_signals": [False] * 7,
+                "task_data": {"tid": 0, "st": 0, "qty": 0},
+                "robot": {
+                    "home_status": True,
+                    "fixture_status": True,
+                    "system_status": RobotSystemStatus.IDLE.value,
+                    "robot_status": False,
+                    "task_status": 0,
+                },
+            },
+        }
 
     def get_status(self) -> dict:
         return {"name": self.device_name, "connected": self.is_connected, "message": self.message}
@@ -204,7 +219,24 @@ class MockOvenController:
         return self.result
 
     def get_running_status(self) -> dict:
-        return {"status": "success", "data": []}
+        # 与 oven_core.get_running_status 一致：data 为炉子状态列表，供 thermal_flow.get_summary 的 summary.oven 使用
+        return {
+            "status": "success",
+            "data": [
+                {
+                    "设备名称": f"炉{oven_id}",
+                    "设备地址": oven_id,
+                    "仪表型号": "858P",
+                    "在线状态": "在线",
+                    "实际温度": 25.0,
+                    "设定温度": 100.0,
+                    "状态显示": "阶段0 剩余1.0h",
+                    "结束时间": "-",
+                    "状态": "开始",
+                    "运行曲线": "炉温曲线",
+                } for oven_id in range(1, 25)
+            ],
+        }
 
     def get_status(self) -> dict:
         return {"name": self.device_name, "connected": self.is_connected}
@@ -252,11 +284,20 @@ class MockCentrifugeController:
         return CentrifugeDoorStatus.CLOSED
 
     def get_running_status(self) -> dict:
+        # 与 centrifuge_core._parse_status_data + get_running_status 一致，供 thermal_flow.get_summary 的 summary.centrifuge 使用
         return {
             "status": "success",
             "data": {
+                "actual_rpm": 0,
+                "centrifuge_force": 0,
+                "run_time": 0,
                 "run_state": CentrifugeStatus.STOPPED.value,
                 "door_window": CentrifugeDoorStatus.CLOSED.value,
+                "setted_rpm": 0,
+                "setted_time": 0,
+                "door_lid": 0,
+                "rotor_state": 0,
+                "remain_time": 0,
             },
         }
 
@@ -311,6 +352,9 @@ class MockXRDController:
     def __init__(self, device_id: str = "01", host: str = None, port: int = None, timeout: int = None):
         self.device_name = "mock_socket_xrd_" + device_id
         self.device_id = device_id
+        self.host = host or "127.0.0.1"
+        self.port = port or 8009
+        self.timeout = timeout
         self.is_connected = False
         self.message = "Mock XRD"
         self.socket = None
@@ -389,7 +433,20 @@ class MockXRDController:
         return {"status": True, "message": "电压电流设置成功"}
 
     def get_running_status(self) -> dict:
-        return {"status": "success", "data": {"xrd": "Mock 就绪"}}
+        # 与 xrd_core.get_running_status 一致：扁平 status_info，无 status/data 外壳，供 xrd_flow.get_summary 的 summary.xrd 使用
+        return {
+            "name": self.device_name,
+            "connected": self.is_connected,
+            "host": self.host,
+            "port": self.port,
+            "status": "idle",
+            "xray_status": True,
+            "power_status": True,
+            "current_voltage": 40.0,
+            "current_current": 40.0,
+            "untest_station": [],
+            "ready_station": ["1"],
+        }
 
 
 # ---------- Mock MixerController ----------
@@ -451,7 +508,11 @@ class MockMixerController:
         return {"status": "success", "message": "任务已停止"}
 
     def get_running_status(self) -> dict:
-        return {"status": "success", "data": {"mixer": "Mock 就绪"}, "message": self.message}
+        # 与 mixer_core.get_running_status 一致：有任务时返回 get_task_info 结构，供 mix_flow.get_summary 的 summary.mixer 使用
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        task_id = self.current_task_id or 1
+        return self.get_task_info(task_id)
 
 
 # ---------- 工厂：根据 config 返回真实或 Mock 单例 ----------
