@@ -117,11 +117,15 @@ class RecommendExperimentScheme(BaseModel):
     预期结果标签: Optional[Dict[str, Any]] = None
     溯源信息: Optional[Dict[str, Any]] = None
 
+class StartExperimentRequestData(BaseModel):
+    """实验启动入参数据"""
+    目标材料: Optional[TargetMaterial] = None
+    推荐实验方案列表: Optional[List[RecommendExperimentScheme]] = []
+    整体备注: Optional[List[str]] = []
+
 class StartExperimentRequest(BaseModel):
     """
     实验启动入参：大模型规范输出（实验输入），与 data/llm_output.json 结构一致。
     推荐实验方案列表 的顺序即试管序号：配料按该列表顺序出料，加热/离心/XRD 与同一序号对应。
     """
-    目标材料: Optional[TargetMaterial] = None
-    推荐实验方案列表: Optional[List[RecommendExperimentScheme]] = []
-    整体备注: Optional[List[str]] = []
+    recommend_recipes: StartExperimentRequestData = Field(..., description="推荐实验方案列表")
