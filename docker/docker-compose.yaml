@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   agv-control-system:
     build:
       context: ..
       dockerfile: ./docker/Dockerfile
     ports:
-      - "8113:8113"
+      - "15006:8113"
     volumes:
       - ..:/app
     environment:
