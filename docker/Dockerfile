@@ -12,7 +12,8 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-COPY .. .
+# context 已在 docker-compose 中设为项目根 (..)，此处复制整个项目到 /app
+COPY . .
 
 EXPOSE 8113
 
