@@ -24,8 +24,8 @@ from datetime import datetime
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, File, UploadFile, Request
+from fastapi.responses import StreamingResponse
 
 from fastapi import Query
 
@@ -42,12 +42,22 @@ from services.experiment_input import (
     get_selected_scheme,
     get_schemes,
 )
-from schemas.experiment import ExperimentStatusResponse, ThermalParamsRequest, XRDParamsRequest, XRDSupplementRequest
+from schemas.experiment import ThermalParamsRequest, XRDParamsRequest, XRDSupplementRequest
 from schemas.llm_output import StartExperimentRequest
 
 from logger import sys_logger as logger
 
 router = APIRouter(prefix="/api/experiment", tags=["实验"])
+
+
+def _wrap_success(message: str, data=None, code: int = 200):
+    """统一成功响应：{"code": 200, "status": "success", "message": "...", "data": {...}}"""
+    return {"code": code, "status": "success", "message": message, "data": data}
+
+
+def _wrap_error(message: str, code: int = 400, data=None):
+    """统一错误响应：{"code": 4xx/5xx, "status": "error", "message": "...", "data": {...}}"""
+    return {"code": code, "status": "error", "message": message, "data": data}
 
 
 @router.post("/start", tags=["实验"])
@@ -72,17 +82,11 @@ async def start_experiment(request: Request):
             body = json.loads(body["recommend_recipes_str"])
         req = StartExperimentRequest.model_validate(body)
     except Exception as e:
-        return JSONResponse(
-            status_code=422,
-            content={"status": "error", "message": f"请求体解析失败: {e}"},
-        )
+        return _wrap_error(f"请求体解析失败: {e}", 422)
     try:
         scheme_manifest = get_scheme_manifest(req)
     except ValueError as e:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(e)},
-        )
+        return _wrap_error(str(e), 400)
     add_task = llm_output_to_add_task_request(req)
     curve_points = llm_output_to_curve_points(req)
     logger.info(f"add_task: {add_task}, scheme_manifest: {len(scheme_manifest)} tube(s)")
@@ -96,20 +100,22 @@ async def start_experiment(request: Request):
     try:
         result = experiment_orchestrator.start(req, add_task, thermal_params)
         result["scheme_manifest"] = scheme_manifest
-        return result
+        data = {
+            "experiment_id": result["experiment_id"],
+            "phase": result["phase"],
+            "phase_label": result["phase_label"],
+            "scheme_manifest": result["scheme_manifest"],
+        }
+        return _wrap_success(result["message"], data)
     except ValueError as e:
         st = experiment_orchestrator.get_status()
-        return JSONResponse(
-            status_code=409,
-            content={
-                "status": "error",
-                "message": str(e),
-                "experiment_id": st.experiment_id,
-                "phase": st.phase.value,
-                "phase_label": st.phase_label,
-                "scheme_manifest": st.scheme_manifest,
-            },
-        )
+        data = {
+            "experiment_id": st.experiment_id,
+            "phase": st.phase.value,
+            "phase_label": st.phase_label,
+            "scheme_manifest": st.scheme_manifest,
+        }
+        return _wrap_error(str(e), 409, data)
 
 
 @router.post("/temperature-from-llm", tags=["实验"])
@@ -123,26 +129,22 @@ async def llm_output_to_temperature_format(req: StartExperimentRequest):
     try:
         schemes = get_schemes(req)
     except ValueError as e:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(e)},
-        )
+        return _wrap_error(str(e), 400)
     for scheme_index, scheme in enumerate(schemes):
         curve_points = llm_output_to_curve_points_for_scheme_index(req, scheme_index)
         temperature_program = (
             scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None
         )
-    return {"status": "success", 
-            "schemes": [
-            {
-                
-                "scheme_id": (scheme.方案ID or "").strip() or "方案0",
-                "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(req, scheme_index)],
-                "temperature_program": scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None,
-                "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
-            }
-            for scheme_index, scheme in enumerate(schemes)]
-    }
+    schemes_data = [
+        {
+            "scheme_id": (scheme.方案ID or "").strip() or "方案0",
+            "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(req, scheme_index)],
+            "temperature_program": scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None,
+            "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
+        }
+        for scheme_index, scheme in enumerate(schemes)
+    ]
+    return _wrap_success("success", {"schemes": schemes_data})
 
 @router.post("/recipe-from-llm", tags=["实验"])
 async def llm_output_to_recipe_format(req: StartExperimentRequest):
@@ -155,19 +157,16 @@ async def llm_output_to_recipe_format(req: StartExperimentRequest):
     try:
         add_task = llm_output_to_add_task_request(req)
     except ValueError as e:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(e)},
-        )
+        return _wrap_error(str(e), 400)
     rows = add_task_request_to_recipe_rows(add_task)
     # 转为可 JSON 序列化的结构
     out = [[{"name": name, "weight": round(w, 2), "unit": unit} for name, w, unit in row] for row in rows]
-    return {
-        "status": "success",
+    data = {
         "task_name": add_task.task_name,
         "schemas": out,
         "description": "每个schema对应一个配方，与配方 Excel 行结构一致；name 含【SSSI】时与 Excel 中【SSSI】名称一致",
     }
+    return _wrap_success("success", data)
 
 
 @router.post("/recipe-from-llm/excel", tags=["实验"])
@@ -180,10 +179,7 @@ async def llm_output_to_recipe_excel(req: StartExperimentRequest):
     try:
         add_task = llm_output_to_add_task_request(req)
     except ValueError as e:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(e)},
-        )
+        return _wrap_error(str(e), 400)
     excel_bytes = add_task_request_to_excel_bytes(add_task)
     # 文件名可能含中文，需用 RFC 5987 编码，避免 Content-Disposition 头 latin-1 报错
     raw_name = (add_task.task_name or "export").strip() or "export"
@@ -202,30 +198,32 @@ async def start_experiment_from_excel(file: UploadFile = File(...)):
     兼容旧版：上传 Excel 启动实验，仅解析配料任务；温度曲线由 confirm_thermal_load 传入曲线名或使用默认。
     """
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
-        raise HTTPException(status_code=400, content={"status": "error", "message": "只支持上传 Excel 文件(.xlsx, .xls)"})
+        return _wrap_error("只支持上传 Excel 文件(.xlsx, .xls)", 400)
 
     contents = await file.read()
     mixer_model = await mixer_service.parse_mixer_tasks_from_excel(contents)
 
     try:
         result = experiment_orchestrator.start(mixer_model)
-        return result
+        data = {
+            "experiment_id": result["experiment_id"],
+            "phase": result["phase"],
+            "phase_label": result["phase_label"],
+            "scheme_manifest": result.get("scheme_manifest"),
+        }
+        return _wrap_success(result["message"], data)
     except ValueError as e:
         st = experiment_orchestrator.get_status()
-        return JSONResponse(
-            status_code=409,
-            content={
-                "status": "error",
-                "message": str(e),
-                "experiment_id": st.experiment_id,
-                "phase": st.phase.value,
-                "phase_label": st.phase_label,
-                "scheme_manifest": getattr(st, "scheme_manifest", None),
-            },
-        )
+        data = {
+            "experiment_id": st.experiment_id,
+            "phase": st.phase.value,
+            "phase_label": st.phase_label,
+            "scheme_manifest": getattr(st, "scheme_manifest", None),
+        }
+        return _wrap_error(str(e), 409, data)
 
 
-@router.get("/status", response_model=ExperimentStatusResponse, tags=["实验"])
+@router.get("/status", tags=["实验"])
 def get_experiment_status():
     """
     查询当前实验进度（供 AI Agent 或前端轮询）。
@@ -233,7 +231,9 @@ def get_experiment_status():
     sub_flow_summaries 仅包含当前阶段对应子流程的摘要：mixing 时仅 mix，thermal_running 时仅 thermal，xrd_running/completed/error 时仅 xrd；等待确认阶段为空。
     当 phase=completed 时，result 字段会包含 XRD 最新数据：theta2（2θ 角度列表）、intensity（强度列表）、sample_id、timestamp。
     """
-    return experiment_orchestrator.get_status()
+    st = experiment_orchestrator.get_status()
+    data = st.model_dump(mode="json") if hasattr(st, "model_dump") else st
+    return _wrap_success("获取状态成功", data)
 
 
 @router.get("/history", tags=["实验"])
@@ -246,7 +246,7 @@ def list_experiments(
     程序重启后仍可查询到已持久化的实验记录。
     """
     items = experiment_persistence.list_experiments(limit=limit, offset=offset)
-    return {"status": "success", "total": len(items), "items": items}
+    return _wrap_success("获取实验列表成功", {"total": len(items), "items": items})
 
 
 @router.get("/record/{experiment_id}", tags=["实验"])
@@ -257,16 +257,16 @@ def get_experiment_by_id(experiment_id: str):
     """
     row = experiment_persistence.get_experiment(experiment_id)
     if not row:
-        raise HTTPException(status_code=404, detail=f"实验不存在: {experiment_id}")
+        return _wrap_error(f"实验不存在: {experiment_id}", 404)
     results = experiment_persistence.get_xrd_results(experiment_id)
-    return {"status": "success", "experiment": row, "xrd_results": results}
+    return _wrap_success("获取实验详情成功", {"experiment": row, "xrd_results": results})
 
 
 @router.post("/confirm_seal", tags=["实验"])
 def confirm_flux_seal():
     """人工或 Agent 确认熔封已完成，流程将继续到「等待加热炉上料」阶段。"""
     experiment_orchestrator.confirm_seal()
-    return {"message": "熔封确认已接收，流程继续"}
+    return _wrap_success("熔封确认已接收，流程继续", None)
 
 
 @router.post("/confirm_thermal_load", tags=["实验"])
@@ -289,7 +289,7 @@ def confirm_thermal_load(req: Optional[ThermalParamsRequest] = None):
         )
     else:
         experiment_orchestrator.confirm_thermal_load()
-    return {"message": "上料确认已接收，开始热处理"}
+    return _wrap_success("上料确认已接收，开始热处理", None)
 
 
 @router.post("/confirm_xrd_ready", tags=["实验"])
@@ -305,7 +305,7 @@ def confirm_xrd_ready(req: Optional[XRDParamsRequest] = None):
         )
     else:
         experiment_orchestrator.confirm_xrd_ready()
-    return {"message": "XRD上样确认已接收，开始XRD测试"}
+    return _wrap_success("XRD上样确认已接收，开始XRD测试", None)
 
 
 @router.post("/confirm_continue_after_error", tags=["实验"])
@@ -317,8 +317,8 @@ def confirm_continue_after_error(resume_phase: Optional[str] = None):
     """
     out = experiment_orchestrator.confirm_continue_after_error(resume_phase=resume_phase)
     if out.get("status") == "error":
-        return JSONResponse(status_code=400, content=out)
-    return out
+        return _wrap_error(out.get("message", "恢复失败"), 400, out)
+    return _wrap_success(out.get("message", "恢复成功"), {"resume_phase": out.get("resume_phase")})
 
 
 @router.post("/stop", tags=["实验"])
@@ -329,7 +329,8 @@ def stop_experiment():
     返回已是否成功发出停止请求（无实验在跑时返回 false）。
     """
     ok = experiment_orchestrator.stop()
-    return {"stopped": ok, "message": "已请求停止实验" if ok else "当前无实验在运行"}
+    msg = "已请求停止实验" if ok else "当前无实验在运行"
+    return _wrap_success(msg, {"stopped": ok})
 
 
 @router.post("/{experiment_id}/xrd-supplement", tags=["实验"])
@@ -340,7 +341,7 @@ def xrd_supplement(experiment_id: str, req: Optional[XRDSupplementRequest] = Non
     """
     exp = experiment_persistence.get_experiment(experiment_id)
     if not exp:
-        raise HTTPException(status_code=404, detail=f"实验不存在: {experiment_id}")
+        return _wrap_error(f"实验不存在: {experiment_id}", 404)
     body = req or XRDSupplementRequest()
     sample_id = body.sample_id
     scheme_id = body.scheme_id
@@ -367,12 +368,9 @@ def xrd_supplement(experiment_id: str, req: Optional[XRDSupplementRequest] = Non
             exp_time=float(exp_time),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"XRD 执行失败: {e}")
+        return _wrap_error(f"XRD 执行失败: {e}", 500)
     if not xrd_result.get("status"):
-        raise HTTPException(
-            status_code=502,
-            detail=xrd_result.get("message", "XRD 测试未成功完成"),
-        )
+        return _wrap_error(xrd_result.get("message", "XRD 测试未成功完成"), 502)
     latest = xrd_flow_mgr.get_latest_data()
     if isinstance(latest, dict) and latest.get("status") and latest.get("data"):
         d = latest.get("data", {})
@@ -389,8 +387,7 @@ def xrd_supplement(experiment_id: str, req: Optional[XRDSupplementRequest] = Non
             experiment_persistence.insert_xrd_results(experiment_id, to_persist)
         except Exception as e:
             logger.log(f"补充测试 XRD 结果持久化失败: {e}", "WARN")
-    return {
-        "status": True,
-        "sample_id": sample_id,
-        "message": "XRD 补充测试完成，结果已按 experiment_id/sample_id 关联存储",
-    }
+    return _wrap_success(
+        "XRD 补充测试完成，结果已按 experiment_id/sample_id 关联存储",
+        {"status": True, "sample_id": sample_id},
+    )

@@ -400,7 +400,7 @@ class MockXRDController:
 
     def get_sample_down(self, sample_station: int) -> Dict[str, Any]:
         _mock_delay()
-        spec_folder = os.path.join("data", "spec_data")
+        spec_folder = os.path.join("data", "spectra")
         import json
         with open(os.path.join(spec_folder, os.listdir(spec_folder)[random.randint(0, len(os.listdir(spec_folder))-1)]), "r") as f:
             spec = json.load(f)
