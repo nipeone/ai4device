@@ -79,10 +79,10 @@ class TemperatureProgram(BaseModel):
     ramp_to_sub_hight_termperature_time_h: Optional[float] = Field(None, description="升温到次高温时间_h", alias="升温到次高温时间_h")
     sub_high_temperature_temperature_celsius: Optional[float] = Field(None, description="次高温段温度_摄氏", alias="次高温段温度_摄氏")
     sub_high_temperature_hold_time_h: Optional[float] = Field(None, description="次高温段保温时间_h", alias="次高温段保温时间_h")
-    ramp_to_high_temperature_time_h: Optional[float] = Field(None, description="升温到最高温时间_h", alias="升温到最高温时间_h")
+    ramp_to_high_temperature_time_h: Optional[float] = Field(None, description="升温到最高温时间", alias="升温到最高温时间_h")
     high_temperature_hold_temperature_celsius: Optional[float] = Field(None, description="最高温段保温温度_摄氏", alias="最高温段保温温度_摄氏")
     high_temperature_hold_time_h: Optional[float] = Field(None, description="最高温段保温时间_h", alias="最高温段保温时间_h")
-    main_cooling_rate_celsius_per_hour: Optional[float] = Field(None, description="降温速率_主降温_℃每小时", alias="降温速率_主降温_℃每小时")
+    main_cooling_rate_celsius_per_hour: Optional[float] = Field(None, description="降温速率_主降温_摄氏度每小时", alias="降温速率_主降温_摄氏度每小时")
     main_cooling_time_h: Optional[float] = Field(None, description="降温时间_主降温_h", alias="降温时间_主降温_h")
     low_temperature_hold_temperature_celsius: Optional[float] = Field(None, description="低温段保温温度_摄氏", alias="低温段保温温度_摄氏")
     low_temperature_hold_time_h: Optional[float] = Field(None, description="低温段保温时间_h", alias="低温段保温时间_h")
@@ -117,11 +117,15 @@ class RecommendExperimentScheme(BaseModel):
     expected_result_label: Optional[Dict[str, Any]] = Field(None, description="预期结果标签", alias="预期结果标签")
     source_info: Optional[Dict[str, Any]] = Field(None, description="溯源信息", alias="溯源信息")
 
-class StartExperimentRequest(BaseModel):
-    """
-    实验启动入参：大模型规范输出（实验输入），与 data/llm_output.json 结构一致。
-    recommend_schemes 的顺序即试管序号：配料按该列表顺序出料，加热/离心/XRD 与同一序号对应。
-    """
+class StartExperimentRequestData(BaseModel):
+    """实验启动入参数据"""
     target_material: Optional[TargetMaterial] = Field(None, description="目标材料", alias="目标材料")
     recommend_schemes: Optional[List[RecommendExperimentScheme]] = Field([], description="推荐实验方案列表", alias="推荐实验方案列表")
     overall_notes: Optional[List[str]] = Field([], description="整体备注", alias="整体备注")
+
+class StartExperimentRequest(BaseModel):
+    """
+    实验启动入参：大模型规范输出（实验输入），与 data/llm_output.json 结构一致。
+    推荐实验方案列表 的顺序即试管序号：配料按该列表顺序出料，加热/离心/XRD 与同一序号对应。
+    """
+    recommend_recipes: StartExperimentRequestData = Field(..., description="实验推荐方案")

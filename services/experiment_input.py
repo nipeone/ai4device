@@ -133,7 +133,7 @@ def get_selected_scheme(req: StartExperimentRequest) -> RecommendExperimentSchem
     """
     从请求中取第一个实验方案（用于温度曲线等单方案逻辑）。列表为空时抛出 ValueError。
     """
-    schemes = req.推荐实验方案列表 or []
+    schemes = req.recommend_schemes or []
     if not schemes:
         raise ValueError("推荐实验方案列表为空，无法启动实验")
     return schemes[0]
@@ -142,7 +142,7 @@ def get_schemes(req: StartExperimentRequest) -> List[RecommendExperimentScheme]:
     """
     从请求中取所有实验方案（用于配料任务）。列表为空时抛出 ValueError。
     """
-    schemes = req.推荐实验方案列表 or []
+    schemes = req.recommend_schemes or []
     if not schemes:
         raise ValueError("推荐实验方案列表为空，无法启动实验")
     return schemes
@@ -152,14 +152,14 @@ def get_scheme_manifest(req: StartExperimentRequest) -> List[dict]:
     按 推荐实验方案列表 顺序生成试管配方清单，供加热/XRD 与序号对应。
     返回列表每项为 {"scheme_index": int, "scheme_id": str, "scheme_type": str}，长度 = len(推荐实验方案列表)。
     """
-    schemes = req.推荐实验方案列表 or []
+    schemes = req.recommend_schemes or []
     if not schemes:
         raise ValueError("推荐实验方案列表为空，无法启动实验")
     return [
         {
             "scheme_index": i,
-            "scheme_id": (getattr(s, "方案ID", None) or "").strip() or f"方案{i}",
-            "scheme_type": (getattr(s, "方案类型", None) or "").strip() or "",
+            "scheme_id": s.scheme_id or f"方案{i}",
+            "scheme_type": s.scheme_type or "",
         }
         for i, s in enumerate(schemes)
     ]
@@ -197,29 +197,29 @@ def _parse_ratio_string(ratio_str: str) -> List[float]:
     return out
 
 
-def _parse_ingredients_from_info(原料信息: str) -> List[str]:
+def _parse_ingredients_from_info(raw_material_info: str) -> List[str]:
     """
-    从 原料信息 解析出物质名列表。
+    从 raw_material_info 解析出物质名列表。
     示例："Al, In, Se (按化学计量比 1:1:3)" -> ["Al", "In", "Se"]
     """
-    if not (原料信息 and 原料信息.strip()):
+    if not (raw_material_info and raw_material_info.strip()):
         return []
     # 去掉括号及括号后内容，再按逗号分割
-    s = 原料信息.strip()
+    s = raw_material_info.strip()
     if "(" in s:
         s = s.split("(")[0].strip()
     return [x.strip() for x in s.split(",") if x.strip()]
 
 
-def _parse_flux_ratio(助熔剂标准化: str) -> Optional[Tuple[str, float, float]]:
+def _parse_flux_ratio(flux_standardization: str) -> Optional[Tuple[str, float, float]]:
     """
-    解析 助熔剂标准化 字符串，得到「助熔剂名: 助熔剂比例 : 原料总量比例」。
+    解析 flux_standardization(助熔剂标准化) 字符串，得到「助熔剂名: 助熔剂比例 : 原料总量比例」。
     示例："Na:(Al+In+Se)=2.7:1" -> ("Na", 2.7, 1.0)；助熔剂与全部原料的摩尔比 2.7:1。
     返回 (flux_name, flux_ratio, main_ratio)，无法解析时返回 None。
     """
-    if not (助熔剂标准化 and 助熔剂标准化.strip()):
+    if not (flux_standardization and flux_standardization.strip()):
         return None
-    s = 助熔剂标准化.strip()
+    s = flux_standardization.strip()
     if "=" not in s:
         return None
     left, right = s.split("=", 1)
@@ -242,14 +242,14 @@ def _parse_flux_ratio(助熔剂标准化: str) -> Optional[Tuple[str, float, flo
     return (flux_name, flux_ratio, main_ratio)
 
 
-def _parse_flux_from_info(助熔剂信息: str) -> Optional[str]:
+def _parse_flux_from_info(flux_info: str) -> Optional[str]:
     """
-    从 助熔剂信息 解析出助熔剂物质名（用于与 助熔剂标准化 中的名称对应或兜底）。
+    从 flux_info(助熔剂信息) 解析出助熔剂物质名（用于与 flux_standardization(助熔剂标准化) 中的名称对应或兜底）。
     示例："Na 助熔剂" -> "Na"，"NaCl-KCl 混合助熔剂" -> "NaCl-KCl"。
     """
-    if not (助熔剂信息 and 助熔剂信息.strip()):
+    if not (flux_info and flux_info.strip()):
         return None
-    s = 助熔剂信息.strip()
+    s = flux_info.strip()
     # 去掉「助熔剂」及其后括号内容
     for sep in ["助熔剂", "助溶剂"]:
         if sep in s:
@@ -355,9 +355,9 @@ def llm_output_to_task_name(req: StartExperimentRequest) -> str:
     """从 LLM 输出生成配料任务名称：目标材料化学式_方案ID_时间戳（单方案）或多方案_时间戳"""
     scheme = get_selected_scheme(req)
     formula = ""
-    if req.目标材料 and getattr(req.目标材料, "化学式", None):
-        formula = (req.目标材料.化学式 or "").strip()
-    scheme_id = (scheme.方案ID or "").strip() or "方案0"
+    if req.target_material and getattr(req.target_material, "chemical_formula", None):
+        formula = (req.target_material.chemical_formula or "").strip()
+    scheme_id = (scheme.scheme_id or "").strip() or "方案0"
     ts = datetime.now().strftime("%Y%m%d%H%M")
     uid = str(uuid.uuid4())[:8]
     if formula:
@@ -369,7 +369,7 @@ def _get_schemes_for_layout(req: StartExperimentRequest) -> List[RecommendExperi
     """
     参与配料任务的方案列表 = 推荐实验方案列表 全部按顺序（每列一个配方，与试管序号一致）。
     """
-    schemes = req.推荐实验方案列表 or []
+    schemes = req.recommend_schemes or []
     if not schemes:
         raise ValueError("推荐实验方案列表为空，无法生成配料任务")
     return list(schemes)
@@ -393,8 +393,8 @@ def llm_output_to_add_task_request(
     """
     schemes = _get_schemes_for_layout(req)
     formula = ""
-    if req.目标材料 and getattr(req.目标材料, "化学式", None):
-        formula = (req.目标材料.化学式 or "").strip()
+    if req.target_material and getattr(req.target_material, "chemical_formula", None):
+        formula = (req.target_material.chemical_formula or "").strip()
     ts = datetime.now().strftime("%Y%m%d%H%M")
     uid = str(uuid.uuid4())[:8]
     task_name = f"{formula}_多方案_{ts}_{uid}" if len(schemes) > 1 else llm_output_to_task_name(req)
@@ -416,16 +416,16 @@ def llm_output_to_add_task_request(
 
     layout_list: List[LayoutListItem] = []
     for col_idx, scheme in enumerate(schemes):
-        recipe: Optional[ProcessRecipe] = scheme.工艺参数
+        recipe: Optional[ProcessRecipe] = scheme.process_recipe
         if not recipe:
             raise ValueError(f"方案 col={col_idx} 的工艺参数为空")
-        ingredients_str = (recipe.原料信息 or "").strip()
-        ratio_str = (recipe.原料标准化 or "").strip()
+        ingredients_str = (recipe.raw_material_info or "").strip()
+        ratio_str = (recipe.raw_material_standardization or "").strip()
         substances = _parse_ingredients_from_info(ingredients_str)
         molar_ratios = _parse_ratio_string(ratio_str)
 
-        flux_ratio_tuple = _parse_flux_ratio((recipe.助熔剂标准化 or "").strip())
-        flux_name_from_info = _parse_flux_from_info((recipe.助熔剂信息 or "").strip())
+        flux_ratio_tuple = _parse_flux_ratio((recipe.flux_standardization or "").strip())
+        flux_name_from_info = _parse_flux_from_info((recipe.flux_info or "").strip())
         if flux_ratio_tuple:
             flux_name, flux_ratio, main_ratio = flux_ratio_tuple
             flux_substance = flux_name or flux_name_from_info or "助熔剂"
@@ -543,15 +543,15 @@ def _temperature_program_to_curve_points(tp: Optional[TemperatureProgram]) -> Li
             CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=-121.0),
         ]
     points: List[CurvePoint] = []
-    ramp1_hr = float(tp.升温到次高温时间_h or 0.0)
-    T1 = float(tp.次高温段温度_摄氏 or 0.0)
-    hold1_hr = float(tp.次高温段保温时间_h or 0.0)
-    ramp2_hr = float(tp.升温到最高温时间_h or 0.0)
-    T_high = float(tp.最高温段保温温度_摄氏 or 0.0)
-    hold2_hr = float(tp.最高温段保温时间_h or 0.0)
-    cool_hr = float(tp.降温时间_主降温_h or 0.0)
-    T_low = float(tp.低温段保温温度_摄氏 or 0.0)
-    hold3_hr = float(tp.低温段保温时间_h or 0.0)
+    ramp1_hr = float(tp.ramp_to_sub_hight_termperature_time_h or 0.0)
+    T1 = float(tp.sub_high_temperature_temperature_celsius or 0.0)
+    hold1_hr = float(tp.sub_high_temperature_hold_time_h or 0.0)
+    ramp2_hr = float(tp.ramp_to_high_temperature_time_h or 0.0)
+    T_high = float(tp.high_temperature_hold_temperature_celsius or 0.0)
+    hold2_hr = float(tp.high_temperature_hold_time_h or 0.0)
+    cool_hr = float(tp.main_cooling_time_h or 0.0)
+    T_low = float(tp.low_temperature_hold_temperature_celsius or 0.0)
+    hold3_hr = float(tp.low_temperature_hold_time_h or 0.0)
 
     points.append(CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=ramp1_hr if ramp1_hr > 0 else 0.0))
     if T1 > 0:
@@ -568,29 +568,29 @@ def _temperature_program_to_curve_points(tp: Optional[TemperatureProgram]) -> Li
 
 def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
     """
-    从选中方案（第一个）的 工艺参数.温度程序 生成加热炉曲线 List[CurvePoint]。
+    从选中方案（第一个）的 process_recipe.temperature_program 生成加热炉曲线 List[CurvePoint]。
     """
     scheme = get_selected_scheme(req)
-    recipe = scheme.工艺参数
-    return _temperature_program_to_curve_points(recipe.温度程序 if recipe else None)
+    recipe = scheme.process_recipe
+    return _temperature_program_to_curve_points(recipe.temperature_program if recipe else None)
 
 
 def llm_output_to_curve_points_for_scheme_index(
     req: StartExperimentRequest, scheme_index: int
 ) -> List[CurvePoint]:
     """
-    从 推荐实验方案列表 中指定索引方案的 工艺参数.温度程序 生成加热炉曲线。
+    从 recommend_schemes 中指定索引方案的 process_recipe.temperature_program 生成加热炉曲线。
     用于多炉多曲线：每炉对应一方案，按 scheme_index 取该方案曲线。
     """
-    schemes = req.推荐实验方案列表 or []
+    schemes = req.recommend_schemes or []
     if not schemes or scheme_index < 0 or scheme_index >= len(schemes):
         return [
             CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=1.0),
             CurvePoint(temperature=ROOM_TEMP_DEFAULT, time=-121.0),
         ]
     scheme = schemes[scheme_index]
-    recipe = scheme.工艺参数 if scheme else None
-    return _temperature_program_to_curve_points(recipe.温度程序 if recipe else None)
+    recipe = scheme.process_recipe if scheme else None
+    return _temperature_program_to_curve_points(recipe.temperature_program if recipe else None)
 
 
 def llm_output_to_experiment_input(

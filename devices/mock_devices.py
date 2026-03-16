@@ -3,6 +3,7 @@ Device 层 Mock 实现：与真实设备同接口，返回成功或模拟数据�
 当 config.MOCK_DEVICES=True 时，flows 注入此类实例替代真实 controller，实验流程走同一套代码路径。
 Mock 执行时每次「动作」调用会随机延迟 0～20 秒，模拟设备响应时间。
 """
+import os
 import random
 import time
 from typing import Dict, Any, List, Optional
@@ -399,12 +400,16 @@ class MockXRDController:
 
     def get_sample_down(self, sample_station: int) -> Dict[str, Any]:
         _mock_delay()
+        spec_folder = os.path.join("data", "spec_data")
+        import json
+        with open(os.path.join(spec_folder, os.listdir(spec_folder)[random.randint(0, len(os.listdir(spec_folder))-1)]), "r") as f:
+            spec = json.load(f)
         return {
             "status": True,
             "message": "下样成功",
             "id_number": f"mock_{sample_station}",
-            "2theta": [10.0, 20.0, 30.0],
-            "intensity": [100, 200, 150],
+            "2theta": spec["2theta"],
+            "intensity": spec["intensity"],
             "timestamp": time.time(),
         }
 

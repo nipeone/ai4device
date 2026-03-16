@@ -18,12 +18,13 @@
   配料、熔封 -> [等待熔封确认] -> 上料 -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
 """
 import io
+import json
 import uuid
 from datetime import datetime
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from fastapi import Query
@@ -50,9 +51,13 @@ router = APIRouter(prefix="/api/experiment", tags=["实验"])
 
 
 @router.post("/start", tags=["实验"])
-async def start_experiment(req: StartExperimentRequest):
+async def start_experiment(request: Request):
     """
     使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
+
+    入参可为两种形式：
+    - 直接传 JSON 对象：{"推荐实验方案列表": [...], ...}
+    - 传 JSON 字符串："{ \"推荐实验方案列表\": [...] }"（内部会 json.loads 再解析为 StartExperimentRequest）
 
     推荐实验方案列表 顺序即试管序号：配料按该顺序出列（每列一配方），加热、离心、XRD 与同一序号对应。
     - 配料：推荐实验方案列表 全部参与，layout 每列对应一个方案；
@@ -62,14 +67,24 @@ async def start_experiment(req: StartExperimentRequest):
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     """
     try:
-        scheme_manifest = get_scheme_manifest(req.recommend_recipes)
+        body = await request.json()
+        if isinstance(body, dict) and "recommend_recipes_str" in body:
+            body = json.loads(body["recommend_recipes_str"])
+        req = StartExperimentRequest.model_validate(body)
+    except Exception as e:
+        return JSONResponse(
+            status_code=422,
+            content={"status": "error", "message": f"请求体解析失败: {e}"},
+        )
+    try:
+        scheme_manifest = get_scheme_manifest(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
             content={"status": "error", "message": str(e)},
         )
-    add_task = llm_output_to_add_task_request(req.recommend_recipes)
-    curve_points = llm_output_to_curve_points(req.recommend_recipes)
+    add_task = llm_output_to_add_task_request(req)
+    curve_points = llm_output_to_curve_points(req)
     logger.info(f"add_task: {add_task}, scheme_manifest: {len(scheme_manifest)} tube(s)")
     logger.info(f"curve_points: {curve_points}")
     thermal_params = {
@@ -79,7 +94,7 @@ async def start_experiment(req: StartExperimentRequest):
         "scheme_manifest": scheme_manifest,
     }
     try:
-        result = experiment_orchestrator.start(req.recommend_recipes, add_task, thermal_params)
+        result = experiment_orchestrator.start(req, add_task, thermal_params)
         result["scheme_manifest"] = scheme_manifest
         return result
     except ValueError as e:
@@ -106,24 +121,24 @@ async def llm_output_to_temperature_format(req: StartExperimentRequest):
     并返回原始温度程序字段便于核对。时间单位为小时（累积），最后一点 temperature=-121 表示结束。
     """
     try:
-        schemes = get_schemes(req.recommend_recipes)
+        schemes = get_schemes(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
             content={"status": "error", "message": str(e)},
         )
     for scheme_index, scheme in enumerate(schemes):
-        curve_points = llm_output_to_curve_points_for_scheme_index(req.recommend_recipes, scheme_index)
+        curve_points = llm_output_to_curve_points_for_scheme_index(req, scheme_index)
         temperature_program = (
-            scheme.工艺参数.温度程序.model_dump(by_alias=True) if scheme.工艺参数 and scheme.工艺参数.温度程序 else None
+            scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None
         )
     return {"status": "success", 
             "schemes": [
             {
                 
                 "scheme_id": (scheme.方案ID or "").strip() or "方案0",
-                "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(req.recommend_recipes, scheme_index)],
-                "temperature_program": scheme.工艺参数.温度程序.model_dump(by_alias=True) if scheme.工艺参数 and scheme.工艺参数.温度程序 else None,
+                "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(req, scheme_index)],
+                "temperature_program": scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None,
                 "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
             }
             for scheme_index, scheme in enumerate(schemes)]
@@ -138,7 +153,7 @@ async def llm_output_to_recipe_format(req: StartExperimentRequest):
     与 docs/配方-0122.xlsx 的表格结构对应，便于预览或再导入。
     """
     try:
-        add_task = llm_output_to_add_task_request(req.recommend_recipes)
+        add_task = llm_output_to_add_task_request(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
@@ -163,7 +178,7 @@ async def llm_output_to_recipe_excel(req: StartExperimentRequest):
     表格结构：每行一个配方，列为成对的「物质名」「重量(mg)」，与 配方-0122.xlsx 类似。
     """
     try:
-        add_task = llm_output_to_add_task_request(req.recommend_recipes)
+        add_task = llm_output_to_add_task_request(req)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
