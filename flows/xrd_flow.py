@@ -323,7 +323,7 @@ class XRDFlowManager:
             # 步骤2: 等待人工上样（提示用户将样品放到上样台） #
             ################################################################
             self._log_step("步骤2: 等待人工上样...", "INFO")
-            if not self._wait_for_confirm("请将样品放到上样台，然后点击确认", timeout=300):
+            if not self._wait_for_confirm("请确认将样品放入XRD试验台", timeout=1200):
                 return self._return_with_error("上样确认超时或取消")
             
             ################################################################

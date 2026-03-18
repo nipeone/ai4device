@@ -1023,6 +1023,7 @@ class ExperimentOrchestrator:
             ExperimentPhase.WAITING_XRD_READY,
         )
         pending_action = PHASE_LABELS.get(phase, phase.value) if is_paused else ""
+        phase_label = PHASE_LABELS.get(phase, phase.value)
         next_action = None
         if is_paused:
             thermal_params = self._thermal_params or {}
@@ -1104,6 +1105,8 @@ class ExperimentOrchestrator:
                     body_data={},
                     body_schema=[],
                 )
+                phase_label = "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/flow/xrd/confirm"
+                pending_action = "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/flow/xrd/confirm"
         elif phase == ExperimentPhase.ERROR:
             with self._lock:
                 resume_phase = self._error_resume_phase
@@ -1116,6 +1119,7 @@ class ExperimentOrchestrator:
                         NextActionParam(name="resume_phase", type="string", required=False, description="从该阶段继续执行，与当前错误可恢复阶段一致", default=None),
                     ],
                 )
+        
         sub_flow = (
             "mix" if phase == ExperimentPhase.MIXING else "load"
             if phase == ExperimentPhase.LOADING else "thermal"
@@ -1157,7 +1161,7 @@ class ExperimentOrchestrator:
         return ExperimentStatusResponse(
             experiment_id=experiment_id,
             phase=phase,
-            phase_label=PHASE_LABELS.get(phase, phase.value),
+            phase_label=phase_label,
             is_paused=is_paused,
             pending_action=pending_action,
             step_info=step_info,
