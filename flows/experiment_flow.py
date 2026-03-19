@@ -584,13 +584,13 @@ class ExperimentOrchestrator:
             # ---------- 1. 配料 -> 熔封确认 -> 上料 ----------
             if not _skip(ExperimentPhase.MIXING):
                 if self._stop_requested:
-                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
                 logger.log("实验流程：开始配料" + (" [Mock 设备]" if mock else ""), "INFO")
                 mix_result = mix_flow_mgr.run(mixer_model)
                 if self._stop_requested:
-                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 if not mix_result.get("status"):
                     self._set_phase_error(
@@ -603,7 +603,7 @@ class ExperimentOrchestrator:
                 self._seal_confirm.clear()
                 if not self._wait_confirm_or_stop(self._seal_confirm, self._confirm_timeout):
                     if self._stop_requested:
-                        self._set_phase_error("用户停止实验", resume_phase=None)
+                        self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     else:
                         self._set_phase_error("等待熔封确认超时", resume_phase=ExperimentPhase.WAITING_THERMAL_LOAD)
                     return
@@ -614,14 +614,14 @@ class ExperimentOrchestrator:
             # ---------- 2. 等待加热炉上料确认 ----------
             if not _skip(ExperimentPhase.WAITING_THERMAL_LOAD):
                 if self._stop_requested:
-                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 self._set_phase(ExperimentPhase.WAITING_THERMAL_LOAD, "请将样品放入加热炉后调用 confirm_thermal_load")
                 logger.log("等待加热炉上料确认，请调用 POST /api/experiment/flux/confirm_thermal_load", "WARN")
                 self._thermal_load_confirm.clear()
                 if not self._wait_confirm_or_stop(self._thermal_load_confirm, self._confirm_timeout):
                     if self._stop_requested:
-                        self._set_phase_error("用户停止实验", resume_phase=None)
+                        self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     else:
                         self._set_phase_error("等待加热炉上料确认超时", resume_phase=ExperimentPhase.WAITING_THERMAL_LOAD)
                     return
@@ -637,7 +637,7 @@ class ExperimentOrchestrator:
             )
             if not _skip(ExperimentPhase.THERMAL_RUNNING):
                 if self._stop_requested:
-                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 self._set_phase(ExperimentPhase.THERMAL_RUNNING, "热处理执行中" + (" [Mock]" if mock else ""))
                 if use_multi_oven:
@@ -703,7 +703,7 @@ class ExperimentOrchestrator:
                         batch = payload
                         oven_id, scheme_idx, qty, scheme = batch["oven_id"], batch["scheme_idx"], batch["qty"], batch["scheme"]
                         if self._stop_requested:
-                            self._set_phase_error("用户停止实验", resume_phase=None)
+                            self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                             multi_oven_success = False
                             break
                         with self._lock:
@@ -713,7 +713,7 @@ class ExperimentOrchestrator:
                         self._xrd_ready_confirm.clear()
                         if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
                             if self._stop_requested:
-                                self._set_phase_error("用户停止实验", resume_phase=None)
+                                self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                             else:
                                 self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
                             multi_oven_success = False
@@ -727,7 +727,7 @@ class ExperimentOrchestrator:
                         if not batch_sample_ids:
                             batch_sample_ids = [f"{scheme.get('scheme_id', '方案')}_{uuid.uuid4().hex[:8]}"]
                         if self._stop_requested:
-                            self._set_phase_error("用户停止实验", resume_phase=None)
+                            self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                             multi_oven_success = False
                             break
                         with self._lock:
@@ -818,12 +818,12 @@ class ExperimentOrchestrator:
                     )
 
                 if self._stop_requested:
-                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 self._xrd_ready_confirm.clear()
                 if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
                     if self._stop_requested:
-                        self._set_phase_error("用户停止实验", resume_phase=None)
+                        self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     else:
                         self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
                     return
@@ -837,13 +837,13 @@ class ExperimentOrchestrator:
                     self._xrd_ready_confirm.clear()
                     if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
                         if self._stop_requested:
-                            self._set_phase_error("用户停止实验", resume_phase=None)
+                            self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                         else:
                             self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
                         return
                     logger.log("XRD上样已确认，开始XRD测试", "INFO")
                 if self._stop_requested:
-                    self._set_phase_error("用户停止实验", resume_phase=None)
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 scheme_manifest = (thermal_params.get("scheme_manifest") or []) if isinstance(thermal_params.get("scheme_manifest"), list) else []
                 if not scheme_manifest:
@@ -1307,7 +1307,7 @@ class ExperimentOrchestrator:
     def stop(self) -> bool:
         """
         请求停止当前实验。若正在运行或处于等待确认阶段，将置位停止标志并唤醒等待，
-        并立即将 phase 置为 ERROR，使 get_status() 立刻显示「用户停止实验」；
+        并立即将 phase 置为 IDLE，使 get_status() 立刻显示「用户停止实验」；
         后台线程会在下一轮检查时退出。
         返回 True 表示已发出停止请求，False 表示当前无实验在跑。
         """
