@@ -588,15 +588,22 @@ class ExperimentOrchestrator:
                     return
                 self._set_phase(ExperimentPhase.MIXING, "配料流程启动" + (" [Mock]" if mock else ""))
                 logger.log("实验流程：开始配料" + (" [Mock 设备]" if mock else ""), "INFO")
+                if self._stop_requested:
+                    self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
+                    return
                 mix_result = mix_flow_mgr.run(mixer_model)
                 if self._stop_requested:
                     self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 if not mix_result.get("status"):
-                    self._set_phase_error(
-                        mix_result.get("message", "配料失败"),
-                        resume_phase=ExperimentPhase.WAITING_SEAL_CONFIRM,
-                    )
+                    msg = mix_result.get("message", "配料失败")
+                    if msg == "用户停止实验":
+                        self._set_phase(ExperimentPhase.IDLE, error_message=msg)
+                    else:
+                        self._set_phase_error(
+                            msg,
+                            resume_phase=ExperimentPhase.WAITING_SEAL_CONFIRM,
+                        )
                     return
                 self._set_phase(ExperimentPhase.WAITING_SEAL_CONFIRM, "配料已完成，等待熔封确认")
                 logger.log("等待熔封完成，请调用 POST /api/experiment/flux/confirm_seal", "WARN")
@@ -633,7 +640,7 @@ class ExperimentOrchestrator:
             use_multi_oven = (
                 isinstance(oven_assignments, list)
                 and len(oven_assignments) > 0
-                and (getattr(self._raw_req.recommend_schemes, None) is not None or mock)
+                and (self._raw_req.recommend_schemes is not None or mock)
             )
             if not _skip(ExperimentPhase.THERMAL_RUNNING):
                 if self._stop_requested:
@@ -779,7 +786,10 @@ class ExperimentOrchestrator:
                                     })
                         if xrd_result is not None:
                             msg = xrd_result.get("message", "XRD测试失败") if isinstance(xrd_result, dict) else str(xrd_result)
-                            self._set_phase_error(msg, resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                            if msg == "用户停止实验":
+                                self._set_phase(ExperimentPhase.IDLE, error_message=msg)
+                            else:
+                                self._set_phase_error(msg, resume_phase=ExperimentPhase.WAITING_XRD_READY)
                             multi_oven_success = False
                             break
                     try:
@@ -804,10 +814,14 @@ class ExperimentOrchestrator:
                     curve_points = self._resolve_thermal_curve_points()
                     thermal_result = thermal_flow_mgr.run(oven_id, qty, curve_points)
                 if not thermal_result.get("status"):
-                    self._set_phase_error(
-                        thermal_result.get("message", "热处理失败"),
-                        resume_phase=ExperimentPhase.WAITING_XRD_READY,
-                    )
+                    msg = thermal_result.get("message", "热处理失败")
+                    if msg == "用户停止实验":
+                        self._set_phase(ExperimentPhase.IDLE, error_message=msg)
+                    else:
+                        self._set_phase_error(
+                            msg,
+                            resume_phase=ExperimentPhase.WAITING_XRD_READY,
+                        )
                     return
                 # 单炉路径：等全部热处理完成后，再统一等待XRD上样并做一次XRD
                 if not use_multi_oven:
@@ -909,7 +923,10 @@ class ExperimentOrchestrator:
                             })
                 if xrd_failed is not None:
                     msg = str(xrd_failed) if not isinstance(xrd_failed, dict) else xrd_failed.get("message", "XRD测试失败")
-                    self._set_phase_error(msg, resume_phase=ExperimentPhase.WAITING_XRD_READY)
+                    if msg == "用户停止实验":
+                        self._set_phase(ExperimentPhase.IDLE, error_message=msg)
+                    else:
+                        self._set_phase_error(msg, resume_phase=ExperimentPhase.WAITING_XRD_READY)
                     return
                 with self._lock:
                     to_persist = (

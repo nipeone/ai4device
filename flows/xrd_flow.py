@@ -25,6 +25,7 @@ class XRDFlowManager:
         self.xrd_controller = xrd_controller
         self.logger = logger
         self.running = False
+        self._stop_requested = False  # 由 stop() 置位，run() 入口检查后清空，与 mix_flow/thermal_flow 一致
         self.current_step_info = "就绪"
         self.thread = None
         self.latest_data = None
@@ -51,6 +52,7 @@ class XRDFlowManager:
         self.confirm_event.set()
 
     def stop(self):
+        self._stop_requested = True
         self.running = False
     
     def _log_step(self, message: str, level: str = "INFO"):
@@ -603,6 +605,9 @@ class XRDFlowManager:
         """
         单样品或多样品 XRD 测试。single=True 时用 sample_id/start_theta 等；single=False 时用 samples 列表（每项含 sample_id、start_theta、end_theta 等），便于与配方 scheme_id 关联。
         """
+        if self._stop_requested:
+            self._stop_requested = False
+            return {"status": False, "message": "用户停止实验"}
         if single:
             if start_theta <= 5.0:
                 raise Exception("起始角度需要>5.0")

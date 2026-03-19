@@ -70,6 +70,7 @@ class ThermalFlowManager:
         self.logger = logger
         self.task_queue = []
         self.running = False
+        self._stop_requested = False  # 由 stop() 置位，run() 入口检查后清空，与 mix_flow/xrd_flow 一致
         self.current_step_info = "就绪"
         # 多炉并行：引用计数，只有全部 run 结束时 running 才置 False
         self._run_ref_lock = threading.Lock()
@@ -108,6 +109,7 @@ class ThermalFlowManager:
         self.confirm_event.set()
 
     def stop(self):
+        self._stop_requested = True
         self.running = False
 
     def _log_step(self, message: str, level: str = "INFO"):
@@ -1221,6 +1223,9 @@ class ThermalFlowManager:
         return {"status": True, "message": "下料流程完成"}
 
     def run(self, oven_id: int, qty: int, curve_points: List[CurvePoint]):
+        if self._stop_requested:
+            self._stop_requested = False
+            return {"status": False, "message": "用户停止实验"}
         self._thread_local.oven_id = oven_id
         try:
             with self._run_ref_lock:

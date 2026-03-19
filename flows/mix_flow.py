@@ -18,6 +18,7 @@ class MixFlowManager:
         self.mix_controller = mix_controller
         self.logger = logger
         self.running = False
+        self._stop_requested = False  # 由 stop() 置位，run() 入口检查后清空，与 thermal_flow/xrd_flow 一致
         self.current_step_info = "就绪"
         self.thread = None
         
@@ -93,17 +94,24 @@ class MixFlowManager:
 
     def run(self, mixer_task_model: AddTaskRequest):
         try:
+            if self._stop_requested:
+                self._stop_requested = False
+                return self._return_with_error("用户停止实验")
             self.running = True
             ########## 步骤0: 准备设备 ##########
             self._log_step("步骤0: 准备设备...", "INFO")
             if not self._check_device_ready():
                 return self._return_with_error("设备未就绪")
+            if not self.running:
+                return self._return_with_error("用户停止实验")
 
             self._log_step("开始配料流程", "INFO")
             # if not self._wait_for_confirm("请确认配料设备就绪，然后点击确认", timeout=300):
             #     return {"status": False, "message": "配料设备就绪确认超时或取消"}
 
             ########## 步骤1: 创建任务  ##########
+            if not self.running:
+                return self._return_with_error("用户停止实验")
             self._log_step("配料设备就绪，开始配料", "INFO")
             rtn = self.mix_controller.add_task(mixer_task_model)
             if rtn.get("status") != "success":
@@ -159,6 +167,7 @@ class MixFlowManager:
         }
 
     def stop(self):
+        self._stop_requested = True
         self.running = False
 
 mix_flow_mgr = MixFlowManager(get_mixer_controller())
