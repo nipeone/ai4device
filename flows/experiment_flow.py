@@ -37,9 +37,9 @@ from services.oven import oven_service
 from services.experiment_input import (
     llm_output_to_add_task_request,
     llm_output_to_curve_points_for_scheme_index,
+    RecommendExperimentRecipes
 )
 from schemas.mixer import AddTaskRequest, MixerSummaryResponse
-from schemas.llm_output import StartExperimentRequest
 from services import experiment_persistence
 try:
     import config
@@ -470,7 +470,7 @@ class ExperimentOrchestrator:
                             }
                             for p in pts
                         ]
-                    if isinstance(assignments, list) and len(assignments) > 0 and getattr(self, "_raw_req", None) is not None:
+                    if isinstance(assignments, list) and len(assignments) > 0 and self._raw_req is not None:
                         temperature_curves = {}
                         for a in assignments:
                             if not isinstance(a, dict):
@@ -633,7 +633,7 @@ class ExperimentOrchestrator:
             use_multi_oven = (
                 isinstance(oven_assignments, list)
                 and len(oven_assignments) > 0
-                and (getattr(self._raw_req, "推荐实验方案列表", None) is not None or mock)
+                and (getattr(self._raw_req.recommend_schemes, None) is not None or mock)
             )
             if not _skip(ExperimentPhase.THERMAL_RUNNING):
                 if self._stop_requested:
@@ -718,7 +718,7 @@ class ExperimentOrchestrator:
                                 self._set_phase_error("等待XRD上样确认超时", resume_phase=ExperimentPhase.WAITING_XRD_READY)
                             multi_oven_success = False
                             break
-                            logger.log(f"炉{oven_id} XRD上样已确认，开始XRD测试", "INFO")
+
                         with self._lock:
                             self._current_xrd_batch = None
                             pending = self._pending_xrd_sample_ids or []
@@ -933,7 +933,7 @@ class ExperimentOrchestrator:
 
     def start(
         self,
-        raw_req: StartExperimentRequest,
+        raw_req: RecommendExperimentRecipes,
         mixer_model: AddTaskRequest,
         thermal_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -1319,7 +1319,7 @@ class ExperimentOrchestrator:
             ) and not self._runner_thread:
                 return False
             self._stop_requested = True
-        self._set_phase(ExperimentPhase.ERROR, error_message="用户停止实验")
+        self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
         self._seal_confirm.set()
         self._thermal_load_confirm.set()
         self._xrd_ready_confirm.set()

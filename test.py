@@ -6,7 +6,7 @@ body_str3='''{\"目标材料\": {\"化学式\": \"AlInSe3\", \"结构原型\": \
 
 import json
 
-from schemas.llm_output import StartExperimentRequest
+from schemas.llm_output import RecommendExperimentRecipes
 
 # body1 = json.loads(body_str1)
 # req1 = StartExperimentRequest.model_validate(body1)
@@ -17,7 +17,7 @@ from schemas.llm_output import StartExperimentRequest
 # print(req2.recommend_schemes[0].process_recipe.temperature_program)
 
 body3 = json.loads(body_str3)
-req3 = StartExperimentRequest.model_validate(body3)
+req3 = RecommendExperimentRecipes.model_validate(body3)
 print(req3.recommend_schemes[0])
 
 # print(req1.recommend_schemes[0].process_recipe.temperature_program == req2.recommend_schemes[0].process_recipe.temperature_program)

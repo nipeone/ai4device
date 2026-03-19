@@ -42,8 +42,8 @@ from services.experiment_input import (
     get_selected_scheme,
     get_schemes,
 )
-from schemas.experiment import ThermalParamsRequest, XRDParamsRequest, XRDSupplementRequest
-from schemas.llm_output import StartExperimentRequest
+from schemas.experiment import ThermalParamsRequest, XRDParamsRequest, XRDSupplementRequest, StartExperimentRequest
+from schemas.llm_output import RecommendExperimentRecipes
 
 from logger import sys_logger as logger
 
@@ -61,7 +61,7 @@ def _wrap_error(message: str, code: int = 400, data=None):
 
 
 @router.post("/start", tags=["实验"])
-async def start_experiment(request: Request):
+async def start_experiment(req: StartExperimentRequest):
     """
     使用大模型规范输出启动实验（JSON 入参，与 data/llm_output.json 结构一致）。
 
@@ -77,18 +77,20 @@ async def start_experiment(request: Request):
     流程在后台执行，在熔封/上料/XRD上样等节点暂停，需调用对应 confirm 接口恢复。
     """
     try:
-        body = await request.json()
-        if isinstance(body, dict) and "recommend_recipes_str" in body:
-            body = json.loads(body["recommend_recipes_str"])
-        req = StartExperimentRequest.model_validate(body)
+        if req.recommend_recipes_str:
+            recommend_recipes = RecommendExperimentRecipes.model_validate(json.loads(req.recommend_recipes_str))
+        elif req.recommend_recipes:
+            recommend_recipes = req.recommend_recipes
+        else:
+            recommend_recipes = req
     except Exception as e:
         return _wrap_error(f"请求体解析失败: {e}", 422)
     try:
-        scheme_manifest = get_scheme_manifest(req)
+        scheme_manifest = get_scheme_manifest(recommend_recipes)
     except ValueError as e:
         return _wrap_error(str(e), 400)
-    add_task = llm_output_to_add_task_request(req)
-    curve_points = llm_output_to_curve_points(req)
+    add_task = llm_output_to_add_task_request(recommend_recipes)
+    curve_points = llm_output_to_curve_points(recommend_recipes)
     logger.info(f"add_task: {add_task}, scheme_manifest: {len(scheme_manifest)} tube(s)")
     logger.info(f"curve_points: {curve_points}")
     thermal_params = {
@@ -98,7 +100,7 @@ async def start_experiment(request: Request):
         "scheme_manifest": scheme_manifest,
     }
     try:
-        result = experiment_orchestrator.start(req, add_task, thermal_params)
+        result = experiment_orchestrator.start(recommend_recipes, add_task, thermal_params)
         result["scheme_manifest"] = scheme_manifest
         data = {
             "experiment_id": result["experiment_id"],
@@ -127,24 +129,34 @@ async def llm_output_to_temperature_format(req: StartExperimentRequest):
     并返回原始温度程序字段便于核对。时间单位为小时（累积），最后一点 temperature=-121 表示结束。
     """
     try:
-        schemes = get_schemes(req)
+        if req.recommend_recipes_str:
+            recommend_recipes = RecommendExperimentRecipes.model_validate(json.loads(req.recommend_recipes_str))
+        elif req.recommend_recipes:
+            recommend_recipes = req.recommend_recipes
+        else:
+            recommend_recipes = req
+    except Exception as e:
+        return _wrap_error(f"请求体解析失败: {e}", 422)
+    try:
+        schemes = get_schemes(recommend_recipes)
+        for scheme_index, scheme in enumerate(schemes):
+            curve_points = llm_output_to_curve_points_for_scheme_index(recommend_recipes, scheme_index)
+            temperature_program = (
+                scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None
+            )
+        schemes_data = [
+            {
+                "scheme_id": (scheme.方案ID or "").strip() or "方案0",
+                "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(recommend_recipes, scheme_index)],
+                "temperature_program": scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None,
+                "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
+            }
+            for scheme_index, scheme in enumerate(schemes)
+        ]
+        return _wrap_success("success", {"schemes": schemes_data})
     except ValueError as e:
         return _wrap_error(str(e), 400)
-    for scheme_index, scheme in enumerate(schemes):
-        curve_points = llm_output_to_curve_points_for_scheme_index(req, scheme_index)
-        temperature_program = (
-            scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None
-        )
-    schemes_data = [
-        {
-            "scheme_id": (scheme.方案ID or "").strip() or "方案0",
-            "curve_points": [{"temperature": p.temperature, "time": p.time} for p in llm_output_to_curve_points_for_scheme_index(req, scheme_index)],
-            "temperature_program": scheme.process_recipe.temperature_program.model_dump(by_alias=True) if scheme.process_recipe and scheme.process_recipe.temperature_program else None,
-            "description": "curve_points 为加热炉曲线点，时间单位小时；temperature=-121 表示结束",
-        }
-        for scheme_index, scheme in enumerate(schemes)
-    ]
-    return _wrap_success("success", {"schemes": schemes_data})
+
 
 @router.post("/recipe-from-llm", tags=["实验"])
 async def llm_output_to_recipe_format(req: StartExperimentRequest):
@@ -155,18 +167,27 @@ async def llm_output_to_recipe_format(req: StartExperimentRequest):
     与 docs/配方-0122.xlsx 的表格结构对应，便于预览或再导入。
     """
     try:
-        add_task = llm_output_to_add_task_request(req)
+        if req.recommend_recipes_str:
+            recommend_recipes = RecommendExperimentRecipes.model_validate(json.loads(req.recommend_recipes_str))
+        elif req.recommend_recipes:
+            recommend_recipes = req.recommend_recipes
+        else:
+            recommend_recipes = req
+    except Exception as e:
+        return _wrap_error(f"请求体解析失败: {e}", 422)
+    try:
+        add_task = llm_output_to_add_task_request(recommend_recipes)
+        rows = add_task_request_to_recipe_rows(add_task)
+        # 转为可 JSON 序列化的结构
+        out = [[{"name": name, "weight": round(w, 2), "unit": unit} for name, w, unit in row] for row in rows]
+        data = {
+            "task_name": add_task.task_name,
+            "schemas": out,
+            "description": "每个schema对应一个配方，与配方 Excel 行结构一致；name 含【SSSI】时与 Excel 中【SSSI】名称一致",
+        }
+        return _wrap_success("success", data)
     except ValueError as e:
         return _wrap_error(str(e), 400)
-    rows = add_task_request_to_recipe_rows(add_task)
-    # 转为可 JSON 序列化的结构
-    out = [[{"name": name, "weight": round(w, 2), "unit": unit} for name, w, unit in row] for row in rows]
-    data = {
-        "task_name": add_task.task_name,
-        "schemas": out,
-        "description": "每个schema对应一个配方，与配方 Excel 行结构一致；name 含【SSSI】时与 Excel 中【SSSI】名称一致",
-    }
-    return _wrap_success("success", data)
 
 
 @router.post("/recipe-from-llm/excel", tags=["实验"])
@@ -177,19 +198,30 @@ async def llm_output_to_recipe_excel(req: StartExperimentRequest):
     表格结构：每行一个配方，列为成对的「物质名」「重量(mg)」，与 配方-0122.xlsx 类似。
     """
     try:
-        add_task = llm_output_to_add_task_request(req)
+        if req.recommend_recipes_str:
+            recommend_recipes = RecommendExperimentRecipes.model_validate(json.loads(req.recommend_recipes_str))
+        elif req.recommend_recipes:
+            recommend_recipes = req.recommend_recipes
+        else:
+            recommend_recipes = req
+    except Exception as e:
+        return _wrap_error(f"请求体解析失败: {e}", 422)
+    try:
+        add_task = llm_output_to_add_task_request(recommend_recipes)
+        excel_bytes = add_task_request_to_excel_bytes(add_task)
+        # 文件名可能含中文，需用 RFC 5987 编码，避免 Content-Disposition 头 latin-1 报错
+        raw_name = (add_task.task_name or "export").strip() or "export"
+        safe_ascii = f"recipe_{datetime.now().strftime('%Y%m%d%H%M')}.xlsx"
+        disp_value = f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(f'recipe_{raw_name}.xlsx', safe='')}"
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": disp_value},
+        )
     except ValueError as e:
         return _wrap_error(str(e), 400)
-    excel_bytes = add_task_request_to_excel_bytes(add_task)
-    # 文件名可能含中文，需用 RFC 5987 编码，避免 Content-Disposition 头 latin-1 报错
-    raw_name = (add_task.task_name or "export").strip() or "export"
-    safe_ascii = f"recipe_{datetime.now().strftime('%Y%m%d%H%M')}.xlsx"
-    disp_value = f"attachment; filename=\"{safe_ascii}\"; filename*=UTF-8''{quote(f'recipe_{raw_name}.xlsx', safe='')}"
-    return StreamingResponse(
-        io.BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": disp_value},
-    )
+    except Exception as e:
+        return _wrap_error(f"生成配方 Excel 失败: {e}", 500)
 
 
 @router.post("/from_excel", tags=["实验"])

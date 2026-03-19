@@ -4,7 +4,8 @@
 """
 from enum import Enum
 from typing import Optional, Any, Dict, List
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from schemas.llm_output import TargetMaterial, RecommendExperimentScheme, RecommendExperimentRecipes
 
 
 class ExperimentPhase(str, Enum):
@@ -110,6 +111,23 @@ class StartExperimentResponse(BaseModel):
     phase: str = Field(..., description="当前阶段枚举值")
     phase_label: str = Field(..., description="阶段说明")
 
+class StartExperimentRequest(RecommendExperimentRecipes):
+    """启动实验接口请求体"""
+    recommend_recipes: Optional[RecommendExperimentRecipes] = Field(None, description="推荐实验方案列表")
+    recommend_recipes_str: Optional[str] = Field(default=None, description="推荐实验方案列表字符串")
+
+    # 模型级校验器：保证二选一
+    @model_validator(mode="after")
+    def check_recipe_fields(self) -> "StartExperimentRequest":
+        # 获取两个字段的值
+        recipes = self.recommend_recipes
+        recipes_str = self.recommend_recipes_str
+
+        # 情况1：两个都为空 → 报错
+        if not (recipes is not None or recipes_str is not None or (self.target_material is not None and self.recommend_schemes is not None)):
+            raise ValueError("recommend_recipes 和 recommend_recipes_str 和 target_material、recommend_schemes 必须填写其中一个")
+        
+        return self
 
 class OvenAssignment(BaseModel):
     """单炉分配：指定某炉放入某方案对应的试管；每方案一管，qty 可选默认 1"""

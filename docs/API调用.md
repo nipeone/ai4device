@@ -306,38 +306,41 @@ post
 
 ```json
 {
-    "status": "started",
+    "code": 200,
+    "status": "success",
     "message": "实验已启动，可通过 GET /api/experiment/status 查询进度",
-    "experiment_id": "f10782d5-417b-410e-a493-19b0d5d8c946",
-    "phase": "mixing",
-    "phase_label": "配料进行中",
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
-        },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ]
+    "data": {
+        "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+        "phase": "mixing",
+        "phase_label": "配料进行中",
+        "scheme_manifest": [
+            {
+                "scheme_index": 0,
+                "scheme_id": "方案_A",
+                "scheme_type": "baseline"
+            },
+            {
+                "scheme_index": 1,
+                "scheme_id": "方案_B",
+                "scheme_type": "高助熔剂稀释慢冷方案"
+            },
+            {
+                "scheme_index": 2,
+                "scheme_id": "方案_C",
+                "scheme_type": "高温长保温溶解法方案"
+            },
+            {
+                "scheme_index": 3,
+                "scheme_id": "方案_D",
+                "scheme_type": "低助熔剂比例极慢冷方案"
+            },
+            {
+                "scheme_index": 4,
+                "scheme_id": "方案_E",
+                "scheme_type": "酸溶/化学蚀刻分离方案"
+            }
+        ]
+    }
 }
 ```
 
@@ -353,8 +356,12 @@ post
 
 ```json
 {
-    "stopped": true,
-    "message": "已请求停止实验"
+    "code": 200,
+    "status": "success",
+    "message": "已请求停止实验",
+    "data": {
+        "stopped": true
+    }
 }
 ```
 
@@ -369,859 +376,848 @@ post
 - response
   1. phase=mixing //配料中
   ```json
-  {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "mixing",
-    "phase_label": "配料进行中",
-    "is_paused": false,
-    "pending_action": "",
-    "step_info": "配料流程启动 [Mock]",
-    "sub_flow": "mix",
-    "sub_flow_summaries": {
-        "status": true,
-        "summary": {
-            "mixer": {
-                "status": "success",
-                "data": {
-                    "task_id": 9001,
-                    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-                    "status": 1,
-                    "creator": "mock",
-                    "task_begin_time": 1773129624.3390176,
-                    "task_end_time": null,
-                    "created_at": 0,
-                    "updated_at": 0,
-                    "scheme_list": [
-                        {
-                            "scheme_name": "方案0",
-                            "ingredients": [
-                                {
-                                    "substance": "Al",
-                                    "weight": 195.78,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "In",
-                                    "weight": 833.02,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Se",
-                                    "weight": 1719.09,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Na",
-                                    "weight": 2252.11,
-                                    "unit": "mg"
-                                }
-                            ]
-                        },
-                        {
-                            "scheme_name": "方案1",
-                            "ingredients": [
-                                {
-                                    "substance": "Al",
-                                    "weight": 88.27,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "In",
-                                    "weight": 375.61,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Se",
-                                    "weight": 775.13,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Na",
-                                    "weight": 3760.99,
-                                    "unit": "mg"
-                                }
-                            ]
-                        },
-                        {
-                            "scheme_name": "方案2",
-                            "ingredients": [
-                                {
-                                    "substance": "Al",
-                                    "weight": 195.78,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "In",
-                                    "weight": 833.02,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Se",
-                                    "weight": 1719.09,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Na",
-                                    "weight": 2252.11,
-                                    "unit": "mg"
-                                }
-                            ]
-                        },
-                        {
-                            "scheme_name": "方案3",
-                            "ingredients": [
-                                {
-                                    "substance": "Al",
-                                    "weight": 244.78,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "In",
-                                    "weight": 1041.52,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Se",
-                                    "weight": 2149.37,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Na",
-                                    "weight": 1564.33,
-                                    "unit": "mg"
-                                }
-                            ]
-                        },
-                        {
-                            "scheme_name": "方案4",
-                            "ingredients": [
-                                {
-                                    "substance": "Al",
-                                    "weight": 73.33,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "In",
-                                    "weight": 312.01,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "Se",
-                                    "weight": 643.89,
-                                    "unit": "mg"
-                                },
-                                {
-                                    "substance": "NaCl",
-                                    "weight": 3970.78,
-                                    "unit": "mg"
-                                }
-                            ]
+    {
+        "code": 200,
+        "status": "success",
+        "message": "获取状态成功",
+        "data": {
+            "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+            "phase": "mixing",
+            "phase_label": "配料进行中",
+            "is_paused": false,
+            "pending_action": "",
+            "step_info": "停止当前任务",
+            "sub_flow": "mix",
+            "sub_flow_summaries": {
+                "status": true,
+                "summary": {
+                    "mixer": {
+                        "status": "success",
+                        "data": {
+                            "task_id": 1,
+                            "task_name": "MockTask",
+                            "status": 2,
+                            "creator": "mock",
+                            "task_begin_time": null,
+                            "task_end_time": null,
+                            "created_at": 1773887813,
+                            "updated_at": 1773887813,
+                            "scheme_list": []
                         }
-                    ]
+                    }
                 }
-            }
+            },
+            "error_message": null,
+            "task_name": "AlInSe3_多方案_202603191036_cb190be0",
+            "scheme_ids": null,
+            "scheme_manifest": [
+                {
+                    "scheme_index": 0,
+                    "scheme_id": "方案_A",
+                    "scheme_type": "baseline"
+                },
+                {
+                    "scheme_index": 1,
+                    "scheme_id": "方案_B",
+                    "scheme_type": "高助熔剂稀释慢冷方案"
+                },
+                {
+                    "scheme_index": 2,
+                    "scheme_id": "方案_C",
+                    "scheme_type": "高温长保温溶解法方案"
+                },
+                {
+                    "scheme_index": 3,
+                    "scheme_id": "方案_D",
+                    "scheme_type": "低助熔剂比例极慢冷方案"
+                },
+                {
+                    "scheme_index": 4,
+                    "scheme_id": "方案_E",
+                    "scheme_type": "酸溶/化学蚀刻分离方案"
+                }
+            ],
+            "result": null,
+            "next_action": null,
+            "xrd_running_sample": null
         }
-    },
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
-        },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": null,
-    "xrd_running_sample": null
-  }
+    }
   ```
   2. phase=waiting_seal_confirm //等待熔封完成确认
   ```json
   {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "waiting_seal_confirm",
-    "phase_label": "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
-    "is_paused": true,
-    "pending_action": "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
-    "step_info": "配料已完成，等待熔封确认",
-    "sub_flow": null,
-    "sub_flow_summaries": null,
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+        "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+        "phase": "waiting_seal_confirm",
+        "phase_label": "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
+        "is_paused": true,
+        "pending_action": "等待熔封完成：请完成熔封后调用 POST /api/experiment/flux/confirm_seal",
+        "step_info": "配料已完成，等待熔封确认",
+        "sub_flow": null,
+        "sub_flow_summaries": null,
+        "error_message": null,
+        "task_name": "AlInSe3_多方案_202603191036_cb190be0",
+        "scheme_ids": null,
+        "scheme_manifest": [
+            {
+                "scheme_index": 0,
+                "scheme_id": "方案_A",
+                "scheme_type": "baseline"
+            },
+            {
+                "scheme_index": 1,
+                "scheme_id": "方案_B",
+                "scheme_type": "高助熔剂稀释慢冷方案"
+            },
+            {
+                "scheme_index": 2,
+                "scheme_id": "方案_C",
+                "scheme_type": "高温长保温溶解法方案"
+            },
+            {
+                "scheme_index": 3,
+                "scheme_id": "方案_D",
+                "scheme_type": "低助熔剂比例极慢冷方案"
+            },
+            {
+                "scheme_index": 4,
+                "scheme_id": "方案_E",
+                "scheme_type": "酸溶/化学蚀刻分离方案"
+            }
+        ],
+        "result": null,
+        "next_action": {
+            "method": "POST",
+            "path": "/api/experiment/confirm_seal",
+            "body_data": {},
+            "body_schema": []
         },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": {
-        "method": "POST",
-        "path": "/api/experiment/confirm_seal",
-        "body_data": {},
-        "body_schema": []
-    },
-    "xrd_running_sample": null
+        "xrd_running_sample": null
+    }
   }
   ```
   3. phase=loading //上料中
   ```json
   {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "loading",
-    "phase_label": "上料进行中",
-    "is_paused": false,
-    "pending_action": "",
-    "step_info": "上料流程启动 [Mock]",
-    "sub_flow": "load",
-    "sub_flow_summaries": null,
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
-        },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": null,
-    "xrd_running_sample": null
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+      "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
+      "phase": "loading",
+      "phase_label": "上料进行中",
+      "is_paused": false,
+      "pending_action": "",
+      "step_info": "上料流程启动 [Mock]",
+      "sub_flow": "load",
+      "sub_flow_summaries": null,
+      "error_message": null,
+      "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
+      "scheme_ids": null,
+      "scheme_manifest": [
+          {
+              "scheme_index": 0,
+              "scheme_id": "方案_A",
+              "scheme_type": "baseline"
+          },
+          {
+              "scheme_index": 1,
+              "scheme_id": "方案_B",
+              "scheme_type": "高助熔剂稀释慢冷方案"
+          },
+          {
+              "scheme_index": 2,
+              "scheme_id": "方案_C",
+              "scheme_type": "高温长保温溶解法方案"
+          },
+          {
+              "scheme_index": 3,
+              "scheme_id": "方案_D",
+              "scheme_type": "低助熔剂比例极慢冷方案"
+          },
+          {
+              "scheme_index": 4,
+              "scheme_id": "方案_E",
+              "scheme_type": "酸溶/化学蚀刻分离方案"
+          }
+      ],
+      "result": null,
+      "next_action": null,
+      "xrd_running_sample": null
+    }
   }
   ```
   4. phase=waiting_thermal_load //等待加热炉上料确认
   ```json
   {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "waiting_thermal_load",
-    "phase_label": "等待上料完成：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
-    "is_paused": true,
-    "pending_action": "等待上料完成：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
-    "step_info": "请将样品放入加热炉后调用 confirm_thermal_load",
-    "sub_flow": null,
-    "sub_flow_summaries": null,
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
-        },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": {
-        "method": "POST",
-        "path": "/api/experiment/confirm_thermal_load",
-        "body_data": {
-            "oven_assignments": [
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+        "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+        "phase": "waiting_thermal_load",
+        "phase_label": "等待上料完成：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
+        "is_paused": true,
+        "pending_action": "等待上料完成：请将样品放入加热炉后调用 POST /api/experiment/flux/confirm_thermal_load",
+        "step_info": "请将样品放入加热炉后调用 confirm_thermal_load",
+        "sub_flow": null,
+        "sub_flow_summaries": null,
+        "error_message": null,
+        "task_name": "AlInSe3_多方案_202603191036_cb190be0",
+        "scheme_ids": null,
+        "scheme_manifest": [
+            {
+                "scheme_index": 0,
+                "scheme_id": "方案_A",
+                "scheme_type": "baseline"
+            },
+            {
+                "scheme_index": 1,
+                "scheme_id": "方案_B",
+                "scheme_type": "高助熔剂稀释慢冷方案"
+            },
+            {
+                "scheme_index": 2,
+                "scheme_id": "方案_C",
+                "scheme_type": "高温长保温溶解法方案"
+            },
+            {
+                "scheme_index": 3,
+                "scheme_id": "方案_D",
+                "scheme_type": "低助熔剂比例极慢冷方案"
+            },
+            {
+                "scheme_index": 4,
+                "scheme_id": "方案_E",
+                "scheme_type": "酸溶/化学蚀刻分离方案"
+            }
+        ],
+        "result": null,
+        "next_action": {
+            "method": "POST",
+            "path": "/api/experiment/confirm_thermal_load",
+            "body_data": {
+                "oven_assignments": [
+                    {
+                        "scheme_index": 0,
+                        "oven_id": null
+                    },
+                    {
+                        "scheme_index": 1,
+                        "oven_id": null
+                    },
+                    {
+                        "scheme_index": 2,
+                        "oven_id": null
+                    },
+                    {
+                        "scheme_index": 3,
+                        "oven_id": null
+                    },
+                    {
+                        "scheme_index": 4,
+                        "oven_id": null
+                    }
+                ]
+            },
+            "body_schema": [
                 {
-                    "scheme_index": 0,
-                    "oven_id": null,
-                },
-                {
-                    "scheme_index": 1,
-                    "oven_id": null,
-                },
-                {
-                    "scheme_index": 2,
-                    "oven_id": null,
-                },
-                {
-                    "scheme_index": 3,
-                    "oven_id": null,
-                },
-                {
-                    "scheme_index": 4,
-                    "oven_id": null,
+                    "name": "oven_id",
+                    "type": "int",
+                    "required": true,
+                    "description": "炉子ID，需用户填写（单炉）或 oven_assignments[].oven_id（多炉）；每方案一管，无需填数量",
+                    "default": null
                 }
             ]
         },
-        "body_schema": [
-            {
-                "name": "oven_id",
-                "type": "int",
-                "required": true,
-                "description": "炉子ID，需用户填写（单炉）或 oven_assignments[].oven_id（多炉）",
-                "default": null
-            }
-        ]
-    },
-    "xrd_running_sample": null
+        "xrd_running_sample": null
+    }
   }
   ```
   5. phase=thermal_running //热处理（加热炉+离心机）执行中
   ```json
   {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "thermal_running",
-    "phase_label": "热处理进行中（加热炉与离心机）",
-    "is_paused": false,
-    "pending_action": "",
-    "step_info": "热处理执行中 [Mock]",
-    "sub_flow": "thermal",
-    "sub_flow_summaries": {
-        "status": true,
-        "summary": {
-            "robot": {
-                "status": "success",
-                "data": {
-                    "plc_connected": true,
-                    "m_signals": [
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false
-                    ],
-                    "task_data": {
-                        "tid": 1,
-                        "st": 1,
-                        "qty": 1
-                    },
-                    "robot": {
-                        "home_status": true,
-                        "fixture_status": true,
-                        "system_status": 2,
-                        "robot_status": true,
-                        "task_status": 1
-                    }
-                }
-            },
-            "oven": {
-                "status": "success",
-                "data": [
-                    {
-                        "设备名称": "炉1",
-                        "设备地址": 1,
-                        "仪表型号": "858P",
-                        "在线状态": "在线",
-                        "实际温度": 450.5,
-                        "设定温度": 500.0,
-                        "状态显示": "阶段2 剩余0.5h",
-                        "结束时间": "2025-02-09 15:30",
-                        "状态": "开始",
-                        "运行曲线": "Mock曲线"
-                    }
-                ]
-            },
-            "centrifuge": {
-                "status": "success",
-                "data": {
-                    "actual_rpm": 500,
-                    "centrifuge_force": 120,
-                    "run_time": 300,
-                    "fault_code": 0,
-                    "run_state": 2,
-                    "door_window": 2,
-                    "setted_rpm": 500,
-                    "setted_time": 10,
-                    "door_lid": 2,
-                    "rotor_state": 2,
-                    "remain_time": 180
-                }
-            },
-            "temperature_curve": [
-                {
-                    "temperature": 20.0,
-                    "time": 11.5
-                },
-                {
-                    "temperature": 600.0,
-                    "time": 2.0
-                },
-                {
-                    "temperature": 600.0,
-                    "time": 1.0
-                },
-                {
-                    "temperature": 870.0,
-                    "time": 24.0
-                },
-                {
-                    "temperature": 870.0,
-                    "time": 150.0
-                },
-                {
-                    "temperature": 600.0,
-                    "time": -121.0
-                }
-            ]
-        }
-    },
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
-        },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": null,
-    "xrd_running_sample": {
-        "scheme_index": 0,
-        "scheme_id": "方案_A",
-        "sample_id": "方案_A_0dee6c74"
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+      "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
+      "phase": "thermal_running",
+      "phase_label": "热处理进行中（加热炉与离心机）",
+      "is_paused": false,
+      "pending_action": "",
+      "step_info": "热处理执行中 [Mock]",
+      "sub_flow": "thermal",
+      "sub_flow_summaries": {
+          "status": true,
+          "summary": {
+              "robot": {
+                  "status": "success",
+                  "data": {
+                      "plc_connected": true,
+                      "m_signals": [
+                          false,
+                          false,
+                          false,
+                          false,
+                          false,
+                          true,
+                          false
+                      ],
+                      "task_data": {
+                          "tid": 1,
+                          "st": 1,
+                          "qty": 1
+                      },
+                      "robot": {
+                          "home_status": true,
+                          "fixture_status": true,
+                          "system_status": 2,
+                          "robot_status": true,
+                          "task_status": 1
+                      }
+                  }
+              },
+              "oven": {
+                  "status": "success",
+                  "data": [
+                      {
+                          "设备名称": "炉1",
+                          "设备地址": 1,
+                          "仪表型号": "858P",
+                          "在线状态": "在线",
+                          "实际温度": 450.5,
+                          "设定温度": 500.0,
+                          "状态显示": "阶段2 剩余0.5h",
+                          "结束时间": "2025-02-09 15:30",
+                          "状态": "开始",
+                          "运行曲线": "Mock曲线"
+                      }
+                  ]
+              },
+              "centrifuge": {
+                  "status": "success",
+                  "data": {
+                      "actual_rpm": 500,
+                      "centrifuge_force": 120,
+                      "run_time": 300,
+                      "fault_code": 0,
+                      "run_state": 2,
+                      "door_window": 2,
+                      "setted_rpm": 500,
+                      "setted_time": 10,
+                      "door_lid": 2,
+                      "rotor_state": 2,
+                      "remain_time": 180
+                  }
+              },
+              "temperature_curve": [
+                  {
+                      "temperature": 20.0,
+                      "time": 11.5
+                  },
+                  {
+                      "temperature": 600.0,
+                      "time": 2.0
+                  },
+                  {
+                      "temperature": 600.0,
+                      "time": 1.0
+                  },
+                  {
+                      "temperature": 870.0,
+                      "time": 24.0
+                  },
+                  {
+                      "temperature": 870.0,
+                      "time": 150.0
+                  },
+                  {
+                      "temperature": 600.0,
+                      "time": -121.0
+                  }
+              ]
+          }
+      },
+      "error_message": null,
+      "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
+      "scheme_ids": null,
+      "scheme_manifest": [
+          {
+              "scheme_index": 0,
+              "scheme_id": "方案_A",
+              "scheme_type": "baseline"
+          },
+          {
+              "scheme_index": 1,
+              "scheme_id": "方案_B",
+              "scheme_type": "高助熔剂稀释慢冷方案"
+          },
+          {
+              "scheme_index": 2,
+              "scheme_id": "方案_C",
+              "scheme_type": "高温长保温溶解法方案"
+          },
+          {
+              "scheme_index": 3,
+              "scheme_id": "方案_D",
+              "scheme_type": "低助熔剂比例极慢冷方案"
+          },
+          {
+              "scheme_index": 4,
+              "scheme_id": "方案_E",
+              "scheme_type": "酸溶/化学蚀刻分离方案"
+          }
+      ],
+      "result": null,
+      "next_action": null,
+      "xrd_running_sample": {
+          "scheme_index": 0,
+          "scheme_id": "方案_A",
+          "sample_id": "方案_A_0dee6c74"
+      }
     }
   }
   ```
   6. phase=waiting_xrd_ready //等待人工将样品放入XRD试验台后确认
   ```json
   {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "waiting_xrd_ready",
-    "phase_label": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
-    "is_paused": true,
-    "pending_action": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
-    "step_info": "请将炉3的样品放入XRD试验台后调用 confirm_xrd_ready",
-    "sub_flow": null,
-    "sub_flow_summaries": null,
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
-        },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": {
-        "method": "POST",
-        "path": "/api/experiment/confirm_xrd_ready",
-        "body_data": {
-            "start_theta": 5.1,
-            "end_theta": 120.0,
-            "increment": 0.01,
-            "exp_time": 0.1,
-            "scheme_index": 0
-        },
-        "body_schema": [
-            {
-                "name": "start_theta",
-                "type": "float",
-                "required": false,
-                "description": "起始角度，默认已填",
-                "default": 5.1
-            },
-            {
-                "name": "end_theta",
-                "type": "float",
-                "required": false,
-                "description": "结束角度，默认已填",
-                "default": 120.0
-            },
-            {
-                "name": "increment",
-                "type": "float",
-                "required": false,
-                "description": "步长，默认已填",
-                "default": 0.01
-            },
-            {
-                "name": "exp_time",
-                "type": "float",
-                "required": false,
-                "description": "曝光时间，默认已填",
-                "default": 0.1
-            },
-            {
-                "name": "scheme_index",
-                "type": "int",
-                "required": false,
-                "description": "本次XRD对应的方案索引（默认0）",
-                "default": 0
-            }
-        ]
-    },
-    "xrd_running_sample": null
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+      "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
+      "phase": "waiting_xrd_ready",
+      "phase_label": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
+      "is_paused": true,
+      "pending_action": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
+      "step_info": "请将炉3的样品放入XRD试验台后调用 confirm_xrd_ready",
+      "sub_flow": null,
+      "sub_flow_summaries": null,
+      "error_message": null,
+      "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
+      "scheme_ids": null,
+      "scheme_manifest": [
+          {
+              "scheme_index": 0,
+              "scheme_id": "方案_A",
+              "scheme_type": "baseline"
+          },
+          {
+              "scheme_index": 1,
+              "scheme_id": "方案_B",
+              "scheme_type": "高助熔剂稀释慢冷方案"
+          },
+          {
+              "scheme_index": 2,
+              "scheme_id": "方案_C",
+              "scheme_type": "高温长保温溶解法方案"
+          },
+          {
+              "scheme_index": 3,
+              "scheme_id": "方案_D",
+              "scheme_type": "低助熔剂比例极慢冷方案"
+          },
+          {
+              "scheme_index": 4,
+              "scheme_id": "方案_E",
+              "scheme_type": "酸溶/化学蚀刻分离方案"
+          }
+      ],
+      "result": null,
+      "next_action": {
+          "method": "POST",
+          "path": "/api/experiment/confirm_xrd_ready",
+          "body_data": {
+              "start_theta": 5.1,
+              "end_theta": 120.0,
+              "increment": 0.01,
+              "exp_time": 0.1,
+              "scheme_index": 0
+          },
+          "body_schema": [
+              {
+                  "name": "start_theta",
+                  "type": "float",
+                  "required": false,
+                  "description": "起始角度，默认已填",
+                  "default": 5.1
+              },
+              {
+                  "name": "end_theta",
+                  "type": "float",
+                  "required": false,
+                  "description": "结束角度，默认已填",
+                  "default": 120.0
+              },
+              {
+                  "name": "increment",
+                  "type": "float",
+                  "required": false,
+                  "description": "步长，默认已填",
+                  "default": 0.01
+              },
+              {
+                  "name": "exp_time",
+                  "type": "float",
+                  "required": false,
+                  "description": "曝光时间，默认已填",
+                  "default": 0.1
+              },
+              {
+                  "name": "scheme_index",
+                  "type": "int",
+                  "required": false,
+                  "description": "本次XRD对应的方案索引（默认0）",
+                  "default": 0
+              }
+          ]
+      },
+      "xrd_running_sample": null
+    }
   }
   ```
   7. phase=xrd_running //XRD测试执行中
   ```json
   {
-    "experiment_id": "c2957b0b-cf2f-468f-bdbc-0379fe7eafd2",
-    "phase": "xrd_running",
-    "phase_label": "XRD测试进行中",
-    "is_paused": false,
-    "pending_action": "",
-    "step_info": "XRD测试执行中（炉3）[Mock]",
-    "sub_flow": "xrd",
-    "sub_flow_summaries": {
-        "status": true,
-        "summary": {
-            "xrd": {
-                "name": "XRD衍射仪",
-                "connected": true,
-                "host": "192.168.1.100",
-                "port": 8000,
-                "status": "running",
-                "xray_status": true,
-                "power_status": true,
-                "current_voltage": 45.0,
-                "current_current": 40.0,
-                "untest_station": [],
-                "ready_station": [
-                    "1"
-                ]
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+        "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+        "phase": "xrd_running",
+        "phase_label": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/flow/xrd/confirm",
+        "is_paused": false,
+        "pending_action": "等待XRD上样：请将样品放入XRD试验台后调用 POST /api/flow/xrd/confirm",
+        "step_info": "等待确认: 请确认将样品放入XRD试验台",
+        "sub_flow": "xrd",
+        "sub_flow_summaries": {
+            "status": true,
+            "summary": {
+                "xrd": {
+                    "name": "mock_socket_xrd_01",
+                    "connected": true,
+                    "host": "127.0.0.1",
+                    "port": 8009,
+                    "status": "idle",
+                    "xray_status": true,
+                    "power_status": true,
+                    "current_voltage": 40.0,
+                    "current_current": 40.0,
+                    "untest_station": [],
+                    "ready_station": [
+                        "1"
+                    ]
+                }
             }
-        }
-    },
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101600_7f4cf0ef",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
         },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
+        "error_message": null,
+        "task_name": "AlInSe3_多方案_202603191036_cb190be0",
+        "scheme_ids": null,
+        "scheme_manifest": [
+            {
+                "scheme_index": 0,
+                "scheme_id": "方案_A",
+                "scheme_type": "baseline"
+            },
+            {
+                "scheme_index": 1,
+                "scheme_id": "方案_B",
+                "scheme_type": "高助熔剂稀释慢冷方案"
+            },
+            {
+                "scheme_index": 2,
+                "scheme_id": "方案_C",
+                "scheme_type": "高温长保温溶解法方案"
+            },
+            {
+                "scheme_index": 3,
+                "scheme_id": "方案_D",
+                "scheme_type": "低助熔剂比例极慢冷方案"
+            },
+            {
+                "scheme_index": 4,
+                "scheme_id": "方案_E",
+                "scheme_type": "酸溶/化学蚀刻分离方案"
+            }
+        ],
+        "result": null,
+        "next_action": {
+            "method": "POST",
+            "path": "/api/flow/xrd/confirm",
+            "body_data": {},
+            "body_schema": []
         },
-        {
+        "xrd_running_sample": {
             "scheme_index": 2,
             "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
+            "sample_id": "方案_C_f17dace3"
         }
-    ],
-    "result": null,
-    "next_action": null,
-    "xrd_running_sample": {
-        "scheme_index": 0,
-        "scheme_id": "方案_A",
-        "sample_id": "方案_A_b7208c"
     }
   }
   ```
   8. phase=completed //实验已完成
   ```json
   {
-    "experiment_id": "6a046814-a1d8-4ac8-9aff-72a80260af43",
-    "phase": "completed",
-    "phase_label": "实验已完成",
-    "is_paused": false,
-    "pending_action": "",
-    "step_info": "实验流程已全部完成",
-    "sub_flow": null,
-    "sub_flow_summaries": {
-        "status": true,
-        "summary": {
-            "xrd": {
-                "name": "XRD衍射仪",
-                "connected": true,
-                "host": "192.168.1.100",
-                "port": 8000,
-                "status": "running",
-                "xray_status": true,
-                "power_status": true,
-                "current_voltage": 45.0,
-                "current_current": 40.0,
-                "untest_station": [],
-                "ready_station": [
-                    "1"
-                ]
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+        "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+        "phase": "completed",
+        "phase_label": "实验已完成",
+        "is_paused": false,
+        "pending_action": "",
+        "step_info": "实验流程已全部完成",
+        "sub_flow": null,
+        "sub_flow_summaries": {
+            "status": true,
+            "summary": {
+                "xrd": {
+                    "name": "mock_socket_xrd_01",
+                    "connected": true,
+                    "host": "127.0.0.1",
+                    "port": 8009,
+                    "status": "idle",
+                    "xray_status": true,
+                    "power_status": true,
+                    "current_voltage": 40.0,
+                    "current_current": 40.0,
+                    "untest_station": [],
+                    "ready_station": [
+                        "1"
+                    ]
+                }
             }
-        }
-    },
-    "error_message": null,
-    "task_name": "AlInSe3_多方案_202603101752_87c15714",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
         },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": [
-        {
-            "experiment_id": "6a046814-a1d8-4ac8-9aff-72a80260af43",
-            "sample_id": "方案_A_0dee6c74",
-            "scheme_id": "方案_A",
-            "scheme_index": 0,
-            "scheme_type": "baseline",
-            "theta2": [],
-            "intensity": [],
-            "timestamp": null
-        },
-        {
-            "experiment_id": "6a046814-a1d8-4ac8-9aff-72a80260af43",
-            "sample_id": "方案_B_f6b74f0a",
-            "scheme_id": "方案_B",
-            "scheme_index": 1,
-            "scheme_type": "高助熔剂稀释慢冷方案",
-            "theta2": [],
-            "intensity": [],
-            "timestamp": null
-        },
-        {
-            "experiment_id": "6a046814-a1d8-4ac8-9aff-72a80260af43",
-            "sample_id": "方案_C_24daa313",
-            "scheme_id": "方案_C",
-            "scheme_index": 2,
-            "scheme_type": "高温长保温溶解法方案",
-            "theta2": [],
-            "intensity": [],
-            "timestamp": null
-        },
-        {
-            "experiment_id": "6a046814-a1d8-4ac8-9aff-72a80260af43",
-            "sample_id": "方案_D_fd630ccf",
-            "scheme_id": "方案_D",
-            "scheme_index": 3,
-            "scheme_type": "低助熔剂比例极慢冷方案",
-            "theta2": [],
-            "intensity": [],
-            "timestamp": null
-        },
-        {
-            "experiment_id": "6a046814-a1d8-4ac8-9aff-72a80260af43",
-            "sample_id": "方案_E_a3bac415",
-            "scheme_id": "方案_E",
-            "scheme_index": 4,
-            "scheme_type": "酸溶/化学蚀刻分离方案",
-            "theta2": [],
-            "intensity": [],
-            "timestamp": null
-        }
-    ],
-    "next_action": null,
-    "xrd_running_sample": null
+        "error_message": null,
+        "task_name": "AlInSe3_多方案_202603191036_cb190be0",
+        "scheme_ids": null,
+        "scheme_manifest": [
+            {
+                "scheme_index": 0,
+                "scheme_id": "方案_A",
+                "scheme_type": "baseline"
+            },
+            {
+                "scheme_index": 1,
+                "scheme_id": "方案_B",
+                "scheme_type": "高助熔剂稀释慢冷方案"
+            },
+            {
+                "scheme_index": 2,
+                "scheme_id": "方案_C",
+                "scheme_type": "高温长保温溶解法方案"
+            },
+            {
+                "scheme_index": 3,
+                "scheme_id": "方案_D",
+                "scheme_type": "低助熔剂比例极慢冷方案"
+            },
+            {
+                "scheme_index": 4,
+                "scheme_id": "方案_E",
+                "scheme_type": "酸溶/化学蚀刻分离方案"
+            }
+        ],
+        "result": [
+            {
+                "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+                "sample_id": "mock_1",
+                "scheme_id": "方案_C",
+                "scheme_index": 2,
+                "scheme_type": "高温长保温溶解法方案",
+                "theta2": [
+                    3.0,
+                    3.01,
+                    3.02,
+                    89.99,
+                    90.0
+                ],
+                "intensity": [
+                    100.0,
+                    50.0,
+                    75.0,
+                    125.0,
+                    100.0
+                ],
+                "timestamp": 1773888550.2145228
+            },
+            {
+                "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+                "sample_id": "mock_1",
+                "scheme_id": "方案_A",
+                "scheme_index": 0,
+                "scheme_type": "baseline",
+                "theta2": [
+                    3.0,
+                    3.01,
+                    3.02,
+                    89.99,
+                    90.0
+                ],
+                "intensity": [
+                    100.0,
+                    50.0,
+                    75.0,
+                    125.0,
+                    100.0
+                ],
+                "timestamp": 1773888775.5369074
+            },
+            {
+                "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+                "sample_id": "mock_1",
+                "scheme_id": "方案_D",
+                "scheme_index": 3,
+                "scheme_type": "低助熔剂比例极慢冷方案",
+                "theta2": [
+                    3.0,
+                    3.01,
+                    3.02,
+                    89.99,
+                    90.0
+                ],
+                "intensity": [
+                    100.0,
+                    50.0,
+                    75.0,
+                    125.0,
+                    100.0
+                ],
+                "timestamp": 1773889266.2504792
+            },
+            {
+                "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+                "sample_id": "mock_1",
+                "scheme_id": "方案_E",
+                "scheme_index": 4,
+                "scheme_type": "酸溶/化学蚀刻分离方案",
+                "theta2": [
+                    3.0,
+                    3.01,
+                    3.02,
+                    89.99,
+                    90.0
+                ],
+                "intensity": [
+                    100.0,
+                    50.0,
+                    75.0,
+                    125.0,
+                    100.0
+                ],
+                "timestamp": 1773889841.7987614
+            },
+            {
+                "experiment_id": "6f7087ee-06f8-48ba-ae08-6b413e86820a",
+                "sample_id": "mock_1",
+                "scheme_id": "方案_B",
+                "scheme_index": 1,
+                "scheme_type": "高助熔剂稀释慢冷方案",
+                "theta2": [
+                    3.0,
+                    3.01,
+                    3.02,
+                    89.99,
+                    90.0
+                ],
+                "intensity": [
+                    100.0,
+                    50.0,
+                    75.0,
+                    125.0,
+                    100.0
+                ],
+                "timestamp": 1773889989.822596
+            }
+        ],
+        "next_action": null,
+        "xrd_running_sample": null
+    }
   }
   ```
   9. phase=error //实验异常结束
   ```json
   {
-    "experiment_id": "09b0a431-3bd7-4212-b398-185b08e1c2b1",
-    "phase": "error",
-    "phase_label": "实验异常结束",
-    "is_paused": false,
-    "pending_action": "",
-    "step_info": "配料已完成，等待熔封确认",
-    "sub_flow": null,
-    "sub_flow_summaries": {
-        "status": false,
-        "message": "等待熔封确认超时",
-        "summary": {}
-    },
-    "error_message": "等待熔封确认超时",
-    "task_name": "AlInSe3_多方案_202603101812_d17e2f06",
-    "scheme_ids": null,
-    "scheme_manifest": [
-        {
-            "scheme_index": 0,
-            "scheme_id": "方案_A",
-            "scheme_type": "baseline"
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+        "experiment_id": "0a5d80c1-5f3b-405c-a1fd-0a3e3d136a35",
+        "phase": "error",
+        "phase_label": "实验异常结束",
+        "is_paused": false,
+        "pending_action": "",
+        "step_info": "配料流程启动 [Mock]",
+        "sub_flow": null,
+        "sub_flow_summaries": {
+            "status": false,
+            "message": "用户停止实验",
+            "summary": {}
         },
-        {
-            "scheme_index": 1,
-            "scheme_id": "方案_B",
-            "scheme_type": "高助熔剂稀释慢冷方案"
-        },
-        {
-            "scheme_index": 2,
-            "scheme_id": "方案_C",
-            "scheme_type": "高温长保温溶解法方案"
-        },
-        {
-            "scheme_index": 3,
-            "scheme_id": "方案_D",
-            "scheme_type": "低助熔剂比例极慢冷方案"
-        },
-        {
-            "scheme_index": 4,
-            "scheme_id": "方案_E",
-            "scheme_type": "酸溶/化学蚀刻分离方案"
-        }
-    ],
-    "result": null,
-    "next_action": null,
-    "xrd_running_sample": null
+        "error_message": "用户停止实验",
+        "task_name": "AlInSe3_多方案_202603191127_f4e8fc33",
+        "scheme_ids": null,
+        "scheme_manifest": [
+            {
+                "scheme_index": 0,
+                "scheme_id": "方案_A",
+                "scheme_type": "baseline"
+            },
+            {
+                "scheme_index": 1,
+                "scheme_id": "方案_B",
+                "scheme_type": "高助熔剂稀释慢冷方案"
+            },
+            {
+                "scheme_index": 2,
+                "scheme_id": "方案_C",
+                "scheme_type": "高温长保温溶解法方案"
+            },
+            {
+                "scheme_index": 3,
+                "scheme_id": "方案_D",
+                "scheme_type": "低助熔剂比例极慢冷方案"
+            },
+            {
+                "scheme_index": 4,
+                "scheme_id": "方案_E",
+                "scheme_type": "酸溶/化学蚀刻分离方案"
+            }
+        ],
+        "result": null,
+        "next_action": null,
+        "xrd_running_sample": null
+    }
   }
   ```
   10. phase=idle //空闲
   ```json
   {
-      "experiment_id": "none",
-      "phase": "idle",
-      "phase_label": "空闲，可启动实验",
-      "is_paused": false,
-      "pending_action": "",
-      "step_info": "",
-      "sub_flow": null,
-      "sub_flow_summaries": null,
-      "error_message": null,
-      "task_name": null,
-      "scheme_ids": null,
-      "scheme_manifest": null,
-      "result": null,
-      "next_action": null,
-      "xrd_running_sample": null
+    "code": 200,
+    "status": "success",
+    "message": "获取状态成功",
+    "data": {
+        "experiment_id": "none",
+        "phase": "idle",
+        "phase_label": "空闲，可启动实验",
+        "is_paused": false,
+        "pending_action": "",
+        "step_info": "",
+        "sub_flow": null,
+        "sub_flow_summaries": null,
+        "error_message": null,
+        "task_name": null,
+        "scheme_ids": null,
+        "scheme_manifest": null,
+        "result": null,
+        "next_action": null,
+        "xrd_running_sample": null
+    }
   }
   ```
 
@@ -1236,7 +1232,10 @@ post
 - response
   ```json
   {
-    "message": "熔封确认已接收，流程继续"
+      "code": 200,
+      "status": "success",
+      "message": "熔封确认已接收，流程继续",
+      "data": null
   }
   ```
 
@@ -1253,28 +1252,23 @@ post
     "oven_assignments": [
         {
             "scheme_index": 0,
-            "oven_id": 3,
-            "qty": 3
+            "oven_id": 3
         },
         {
             "scheme_index": 1,
-            "oven_id": 4,
-            "qty": 2
+            "oven_id": 4
         },
         {
             "scheme_index": 2,
-            "oven_id": 5,
-            "qty": 2
+            "oven_id": 5
         },
         {
             "scheme_index": 3,
-            "oven_id": 6,
-            "qty": 2
+            "oven_id": 6
         },
         {
             "scheme_index": 4,
-            "oven_id": 6,
-            "qty": 2
+            "oven_id": 6
         }
     ]
   }
@@ -1282,11 +1276,14 @@ post
 - response
   ```json
   {
-    "message": "上料确认已接收，开始热处理"
+      "code": 200,
+      "status": "success",
+      "message": "上料确认已接收，开始热处理",
+      "data": null
   }
   ```
 
-### 确认XRD上样
+### 确认XRD设备就绪
 
 - url
 /api/experiment/flux/confirm_xrd_ready
@@ -1300,18 +1297,33 @@ post
     "end_theta": 120,
     "increment": 0.01,
     "exp_time": 0.1,
-    "sample_assignments": [
-        {
-            "scheme_index": 0,
-            "qty": 1
-        }
-    ]
+    "scheme_index": 0
   }
   ```
 - response
   ```json
   {
-    "message": "XRD上样确认已接收，开始XRD测试"
+      "code": 200,
+      "status": "success",
+      "message": "XRD上样确认已接收，开始XRD测试",
+      "data": null
   }
   ```
 
+### 确认XRD上样
+
+- url
+/api/flow/xrd/confirm
+- method
+post
+- body
+  空
+- response
+  ```json
+  {
+    "code": 200,
+    "status": "success",
+    "message": "完成确认",
+    "data": null
+  }
+  ```

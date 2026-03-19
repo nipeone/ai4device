@@ -15,7 +15,7 @@ from typing import List, Tuple, Optional
 import uuid
 
 from schemas.llm_output import (
-    StartExperimentRequest,
+    RecommendExperimentRecipes,
     RecommendExperimentScheme,
     TemperatureProgram,
     ProcessRecipe,
@@ -129,7 +129,7 @@ def molar_ratios_to_mass_weights(
     return masses
 
 
-def get_selected_scheme(req: StartExperimentRequest) -> RecommendExperimentScheme:
+def get_selected_scheme(req: RecommendExperimentRecipes) -> RecommendExperimentScheme:
     """
     从请求中取第一个实验方案（用于温度曲线等单方案逻辑）。列表为空时抛出 ValueError。
     """
@@ -138,7 +138,7 @@ def get_selected_scheme(req: StartExperimentRequest) -> RecommendExperimentSchem
         raise ValueError("推荐实验方案列表为空，无法启动实验")
     return schemes[0]
 
-def get_schemes(req: StartExperimentRequest) -> List[RecommendExperimentScheme]:
+def get_schemes(req: RecommendExperimentRecipes) -> List[RecommendExperimentScheme]:
     """
     从请求中取所有实验方案（用于配料任务）。列表为空时抛出 ValueError。
     """
@@ -147,7 +147,7 @@ def get_schemes(req: StartExperimentRequest) -> List[RecommendExperimentScheme]:
         raise ValueError("推荐实验方案列表为空，无法启动实验")
     return schemes
 
-def get_scheme_manifest(req: StartExperimentRequest) -> List[dict]:
+def get_scheme_manifest(req: RecommendExperimentRecipes) -> List[dict]:
     """
     按 推荐实验方案列表 顺序生成试管配方清单，供加热/XRD 与序号对应。
     返回列表每项为 {"scheme_index": int, "scheme_id": str, "scheme_type": str}，长度 = len(推荐实验方案列表)。
@@ -351,7 +351,7 @@ DEFAULT_TOTAL_WEIGHT = 5.0
 G_PER_MG = 1000.0
 
 
-def llm_output_to_task_name(req: StartExperimentRequest) -> str:
+def llm_output_to_task_name(req: RecommendExperimentRecipes) -> str:
     """从 LLM 输出生成配料任务名称：目标材料化学式_方案ID_时间戳（单方案）或多方案_时间戳"""
     scheme = get_selected_scheme(req)
     formula = ""
@@ -365,7 +365,7 @@ def llm_output_to_task_name(req: StartExperimentRequest) -> str:
     return f"{scheme_id}_{ts}_{uid}"
 
 
-def _get_schemes_for_layout(req: StartExperimentRequest) -> List[RecommendExperimentScheme]:
+def _get_schemes_for_layout(req: RecommendExperimentRecipes) -> List[RecommendExperimentScheme]:
     """
     参与配料任务的方案列表 = 推荐实验方案列表 全部按顺序（每列一个配方，与试管序号一致）。
     """
@@ -376,7 +376,7 @@ def _get_schemes_for_layout(req: StartExperimentRequest) -> List[RecommendExperi
 
 
 def llm_output_to_add_task_request(
-    req: StartExperimentRequest,
+    req: RecommendExperimentRecipes,
     check_chemical: bool = False,
     total_weight: float = DEFAULT_TOTAL_WEIGHT,
 ) -> AddTaskRequest:
@@ -566,7 +566,7 @@ def _temperature_program_to_curve_points(tp: Optional[TemperatureProgram]) -> Li
     return points
 
 
-def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
+def llm_output_to_curve_points(req: RecommendExperimentRecipes) -> List[CurvePoint]:
     """
     从选中方案（第一个）的 process_recipe.temperature_program 生成加热炉曲线 List[CurvePoint]。
     """
@@ -576,7 +576,7 @@ def llm_output_to_curve_points(req: StartExperimentRequest) -> List[CurvePoint]:
 
 
 def llm_output_to_curve_points_for_scheme_index(
-    req: StartExperimentRequest, scheme_index: int
+    req: RecommendExperimentRecipes, scheme_index: int
 ) -> List[CurvePoint]:
     """
     从 recommend_schemes 中指定索引方案的 process_recipe.temperature_program 生成加热炉曲线。
@@ -594,13 +594,13 @@ def llm_output_to_curve_points_for_scheme_index(
 
 
 def llm_output_to_experiment_input(
-    req: StartExperimentRequest,
+    req: RecommendExperimentRecipes,
     oven_id: int = 1,
     qty: int = 1,
     total_weight: float = DEFAULT_TOTAL_WEIGHT,
 ) -> Tuple[AddTaskRequest, List[CurvePoint], int, int]:
     """
-    从 StartExperimentRequest 解析出配料任务、温度曲线与炉子参数。
+    从 RecommendExperimentRecipes 解析出配料任务、温度曲线与炉子参数。
     返回 (AddTaskRequest, curve_points, oven_id, qty)。
     """
     add_task = llm_output_to_add_task_request(req, total_weight=total_weight)

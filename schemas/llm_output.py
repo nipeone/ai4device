@@ -117,7 +117,7 @@ class RecommendExperimentScheme(BaseModel):
     expected_result_label: Optional[Dict[str, Any]] = Field(None, description="预期结果标签", alias="预期结果标签")
     source_info: Optional[Dict[str, Any]] = Field(None, description="溯源信息", alias="溯源信息")
 
-class StartExperimentRequest(BaseModel):
+class RecommendExperimentRecipes(BaseModel):
     """
     实验启动入参：大模型规范输出（实验输入），与 data/llm_output.json 结构一致。
     recommend_schemes 的顺序即试管序号：配料按该列表顺序出料，加热/离心/XRD 与同一序号对应。

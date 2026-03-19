@@ -7,6 +7,7 @@ import os
 import random
 import time
 from typing import Dict, Any, List, Optional
+import threading
 
 from .base import DeviceStatus
 from schemas.robot import RobotSystemStatus, RobotHomeStatus
@@ -360,6 +361,8 @@ class MockXRDController:
         self.message = "Mock XRD"
         self.socket = None
         self.xrd_status_cache = {}
+        self._lock = threading.RLock()
+        self._sample_id = None
 
     def connect(self):
         _mock_delay()
@@ -396,6 +399,10 @@ class MockXRDController:
         exp_time: Optional[float],
     ) -> Dict[str, Any]:
         _mock_delay()
+
+        with self._lock:
+            self._sample_id = sample_id
+
         return {"status": True, "message": "采集参数发送成功"}
 
     def get_sample_down(self, sample_station: int) -> Dict[str, Any]:
@@ -407,7 +414,7 @@ class MockXRDController:
         return {
             "status": True,
             "message": "下样成功",
-            "id_number": f"mock_{sample_station}",
+            "id_number": self._sample_id,
             "2theta": spec["2theta"],
             "intensity": spec["intensity"],
             "timestamp": time.time(),

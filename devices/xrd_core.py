@@ -8,6 +8,7 @@ import json
 import struct
 import time
 from typing import Dict, Any, Optional
+import threading
 
 from logger import sys_logger as logger
 from .base import BaseDevice, DeviceStatus
@@ -32,6 +33,8 @@ class XRDController(BaseDevice):
         self.socket = None  # TCP Socket对象
         self.socket_timeout = timeout  # Socket超时时间（秒）
         self.xrd_status_cache = {}
+        self._lock = threading.RLock()
+        self._sample_id = None
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value=True)
     def _send_command(self, command: str, content: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -234,7 +237,9 @@ class XRDController(BaseDevice):
             "increment": increment,
             "exp_time": exp_time
         }
-
+        # 记录当前样品ID
+        with self._lock:
+            self._sample_id = sample_id
         response = self._send_command("SEND_SAMPLE_READY", content)
         if response.get("status"):
             self.message = "采集参数发送成功"

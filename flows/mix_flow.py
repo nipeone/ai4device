@@ -117,6 +117,8 @@ class MixFlowManager:
             self._log_step(f"任务信息: {status}", "SUCCESS")
 
             ########## 步骤2: 等待启动配料任务 ##########
+            if not self.running:
+                return self._return_with_error("用户停止实验")
             self._log_step("步骤2: 等待启动配料任务...", "INFO")
             start_rtn = self.mix_controller.batch_start_task([task_id])
             if start_rtn.get("status") != "success":
