@@ -950,6 +950,7 @@ class ExperimentOrchestrator:
 
     def start(
         self,
+        task_id: str,
         raw_req: RecommendExperimentRecipes,
         mixer_model: AddTaskRequest,
         thermal_params: Optional[Dict[str, Any]] = None,
@@ -970,7 +971,7 @@ class ExperimentOrchestrator:
                     f"当前已有实验在运行或等待确认，阶段: {self._phase.value}。"
                     "请先查询状态并完成确认或等待结束。"
                 )
-            self._experiment_id = str(uuid.uuid4())
+            self._experiment_id = task_id
             self._task_name = getattr(mixer_model, "task_name", None)
             self._phase = ExperimentPhase.IDLE
             # 原始请求（供后续总结使用，原始请求中包含各个方案的名称，而解析后的mixer_model不包含方案名称）

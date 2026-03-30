@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Optional, Any, Dict, List
 from pydantic import BaseModel, Field, field_validator, model_validator
 from schemas.llm_output import TargetMaterial, RecommendExperimentScheme, RecommendExperimentRecipes
-
+import uuid
 
 class ExperimentPhase(str, Enum):
     """实验总流程阶段（与可中断/恢复节点对应）"""
@@ -113,6 +113,7 @@ class StartExperimentResponse(BaseModel):
 
 class StartExperimentRequest(RecommendExperimentRecipes):
     """启动实验接口请求体"""
+    task_id: Optional[str] = Field(default=str(uuid.uuid4()), description="实验ID，不传则自动生成")
     recommend_recipes: Optional[RecommendExperimentRecipes] = Field(None, description="推荐实验方案列表")
     recommend_recipes_str: Optional[str] = Field(default=None, description="推荐实验方案列表字符串")
 

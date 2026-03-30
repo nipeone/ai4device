@@ -100,7 +100,7 @@ async def start_experiment(req: StartExperimentRequest):
         "scheme_manifest": scheme_manifest,
     }
     try:
-        result = experiment_orchestrator.start(recommend_recipes, add_task, thermal_params)
+        result = experiment_orchestrator.start(req.task_id, recommend_recipes, add_task, thermal_params)
         result["scheme_manifest"] = scheme_manifest
         data = {
             "experiment_id": result["experiment_id"],
@@ -236,7 +236,8 @@ async def start_experiment_from_excel(file: UploadFile = File(...)):
     mixer_model = await mixer_service.parse_mixer_tasks_from_excel(contents)
 
     try:
-        result = experiment_orchestrator.start(mixer_model)
+        raw_req = StartExperimentRequest(recommend_recipes=RecommendExperimentRecipes())
+        result = experiment_orchestrator.start(raw_req.task_id, raw_req.recommend_recipes, mixer_model)
         data = {
             "experiment_id": result["experiment_id"],
             "phase": result["phase"],
