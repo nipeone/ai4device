@@ -417,16 +417,112 @@ class ThermalFlowManager:
     #             except Exception as e:
     #                 self.logger.log(f"自动关闭失败: {e}", "ERROR")
 
-    def _set_linked_devices_status_to_robot(self, is_oven: bool = True) -> bool:
-        """设置机器人加热炉、玻璃门等关联设备状态"""
+    ##########修改了反转控制M10.3的方式。
+    def _set_linked_devices_status_to_robot(self, is_oven: bool = True, oven_id: int = 0, cent_id: int = 0) -> bool:      
+        """设置机器人加热炉、玻璃门、离心机等关联设备状态"""
         try:
-            v = self.robot_controller.read_m_bytes(10)
             if is_oven:
-                v[0] |= (1 << 2)
-                v[0] |= (1 << 3)
+                # ==========================================
+                # 1：获取当前状态，只置位 M10.2，并写入
+                # ==========================================
+                v1 = self.robot_controller.read_m_bytes(10)
+                if v1:  # 防护：确保读到了数据
+                    v1[0] |= (1 << 2)
+                    self.robot_controller.write_m_bytes(10, v1)
+                    self._log_step("已发送 M10.2 (玻璃门) 信号，等待 2 秒互锁解除...", "INFO")
+                
+                # 等待 2 秒
+                time.sleep(2.0)
+                
+                # ==========================================
+                # 2：查看DB1.250的值，等待机器人扫码汇报
+                # ==========================================
+                if oven_id > 0:
+                    self._log_step(f"开始监控 DB1.250，等待机器人扫码确认炉号: {oven_id}...", "INFO")
+                    wait_start = time.time()
+                    scan_success = False
+                    
+                    # 给机器人最多 120 秒的时间去走位和扫码
+                    while time.time() - wait_start < 120.0:
+                        # 如果整个流程被外界终止，安全退出
+                        if not getattr(self, 'running', True): 
+                            return False
+                            
+                        # 读取 DB1.250，数据类型为 INT32，占用 4 个字节， size=4
+                        current_oven_pos = self.robot_controller.read_db_int(1, 250, size=4)
+                        
+                        # 如果读到的值和目标炉号一致，说明机器人扫码成功并主动汇报了
+                        if current_oven_pos == oven_id:
+                            self._log_step(f"【扫码确认】DB1.250 已变为 {oven_id}，机器人精确到位！", "SUCCESS")
+                            scan_success = True
+                            break
+                            
+                        time.sleep(2) # 每隔 2 秒看一次 PLC
+                        
+                    # 如果 120 秒了还没扫码成功，说明出问题了，强行中止
+                    if not scan_success:
+                        self._log_step(f"严重错误: 机器人 60 秒内未完成扫码 (DB1.250 未变为 {oven_id})", "ERROR")
+                        return False
+                    else:
+                    # 如果没有传 oven_id (容错处理)，等 2 秒
+                     time.sleep(2.0)
+                
+                # ==========================================
+                # 3：扫码成功，置位 M10.3 并写入
+                # ==========================================
+                    v2 = self.robot_controller.read_m_bytes(10)
+                    if v2:
+                        v2[0] |= (1 << 3)
+                        self.robot_controller.write_m_bytes(10, v2)
+                        self._log_step("已发送 M10.3 (炉盖) 信号...", "INFO")
+
             else:
-                v[0] |= (1 << 4)
-            self.robot_controller.write_m_bytes(10, v)
+                # ==========================================
+                # 离心机：查看 DB1.254 的值，等待机器人扫码汇报
+                # ==========================================
+                if cent_id > 0:
+                    self._log_step(f"开始监控 DB1.254，等待机器人扫码确认离心机标志: {cent_id}...", "INFO")
+                    wait_start = time.time()
+                    scan_success = False
+                    
+                    # 给机器人最多 120 秒的时间去走位和扫码
+                    while time.time() - wait_start < 120.0:
+                        # 如果整个流程被外界终止，安全退出
+                        if not getattr(self, 'running', True): 
+                            return False
+                            
+                        # 读取 DB1.254，数据类型为 INT32，占用 4 个字节， size=4
+                        current_cent_pos = self.robot_controller.read_db_int(1, 254, size=4)
+                        
+                        # 如果读到的值和目标离心机号一致，说明机器人扫码成功并主动汇报了
+                        if current_cent_pos == cent_id:
+                            self._log_step(f"【扫码确认】DB1.254 已变为 {cent_id}，机器人精确到位！", "SUCCESS")
+                            scan_success = True
+                            break
+                            
+                        time.sleep(2) # 每隔 2 秒看一次 PLC
+                        
+                    # 如果 120 秒了还没扫码成功，说明出问题了，强行中止
+                    if not scan_success:
+                        self._log_step(f"严重错误: 机器人 120 秒内未完成扫码 (DB1.254 未变为 {cent_id})", "ERROR")
+                        return False
+                    else:
+                        time.sleep(2.0)
+
+                # ==========================================
+                # 扫码成功，置位 M10.4 并写入
+                # ==========================================
+                v3 = self.robot_controller.read_m_bytes(10)
+                if v3:
+                    v3[0] |= (1 << 4)
+                    self.robot_controller.write_m_bytes(10, v3)
+                    self._log_step("已发送 M10.4 (离心机门) 信号...", "INFO")
+                    
+            time.sleep(0.5)
+            m2_status = self.robot_controller.read_m(10, 2)
+            m3_status = self.robot_controller.read_m(10, 3)
+            m4_status = self.robot_controller.read_m(10, 4) # 顺便加个 M10.4 的监控日志
+            self._log_step(f"【深度查表】PLC实际状态回读: M10.2={m2_status}, M10.3={m3_status}, M10.4={m4_status}", "INFO")
             return True
         except Exception as e:
             self._log_step(f"发送PLC许可信号失败: {e}", "ERROR")
@@ -516,10 +612,13 @@ class ThermalFlowManager:
         self._log_step("正在等待玻璃门打开及关闭...", "INFO")
         start_time = time.time()
         is_completed = False
-        while self.running and time.time() - start_time < 3.0:  # 最多等3秒
+        while self.running and time.time() - start_time < 10.0:  # 最多等10秒.改的长一点
             # TODO 获取玻璃门状态，目前没有API支持，先睡眠0.5秒
-            status = self.door_controller.get_door_status(door_id)
-            if status.get("status") == "success" and status.get("data") == status.value:
+
+            current_res = self.door_controller.get_door_status(door_id)
+
+            self._log_step(f"【门状态监控】真实返回: {current_res}", "INFO")
+            if current_res.get("status") == "success" and current_res.get("data") == status.value:
                 is_completed = True
                 break
             time.sleep(2)
@@ -531,9 +630,9 @@ class ThermalFlowManager:
         self._log_step(f"等待任务完成: {TASKS[task_type]} (等待回原点信号...)", "INFO")
         is_completed = False
         start_time = time.time()
-        while self.running and time.time() - start_time < 5.0:  # 最多等5秒
+        while self.running and time.time() - start_time < 300.0:  # 最多等300秒
             # 1. 优先处理断线
-            if not self.robot_controller.connected:
+            if not self.robot_controller.is_connected:
                 self._log_step("流程暂停: PLC连接断开，正在尝试重连...", "WARN")
                 self.robot_controller.connect()
                 time.sleep(1)
@@ -565,17 +664,34 @@ class ThermalFlowManager:
 
             time.sleep(2)
         return is_completed
-
-    def _wait_for_centrifuge_completed(self, time: int):
-        """等待离心机完成，最多等time分钟"""
+    # ⭐正确调用模块的 time() 
+    def _wait_for_centrifuge_completed(self, duration_mins: int) -> bool:
+        """等待离心机完成，最多等 duration_mins 分钟"""
         self._log_step(f"正在等待离心机完成...", "INFO")
         start_time = time.time()
-        while time.time() - start_time < time * 60:
+
+        # 稍微等 5 秒，防止刚下发 start 指令，PLC 状态还没从 STOPPED 切到 RUNNING
+        time.sleep(5.0)
+
+        # 循环条件：没有超时 (多给 60 秒作为通信宽限期)
+        while time.time() - start_time < (duration_mins * 60) + 60:
             if not self.running:
                 self._log_step("流程未知原因停止", "ERROR")
                 return False
-            time.sleep(2)
-        return True
+
+            # 实时读取离心机状态
+            current_status = self.centrifuge_controller.get_centrifuge_status()
+            
+            # 如果读到的状态是 STOPPED，说明离心机转完了
+            if current_status == CentrifugeStatus.STOPPED:
+                self._log_step("检测到离心机已停止，运行任务圆满结束！", "SUCCESS")
+                return True
+
+            # 每隔 2 秒问一次
+            time.sleep(2.0)
+
+        self._log_step(f"严重错误: 离心机运行超时 ({duration_mins} 分钟)，任务中止", "ERROR")
+        return False
 
     def _wait_for_centrifuge_stopped(self) -> bool:
         """等待离心机停止，最多等10秒"""
@@ -594,7 +710,7 @@ class ThermalFlowManager:
         self._log_step("正在等待离心机门打开及关闭...", "INFO")
         start_time = time.time()
         is_completed = False
-        while self.running and time.time() - start_time < 5.0:  # 最多等5秒
+        while self.running and time.time() - start_time < 20.0:  # 最多等20秒
             # 等待离心机门状态为指定状态才能往后执行
             if self.centrifuge_controller.get_door_status() == status:
                 is_completed = True
@@ -698,9 +814,8 @@ class ThermalFlowManager:
         if not self._wait_for_door_operation_completed(self.get_door_by_oven(oven_id), DoorStatus.OPENED):
             self._log_step("严重错误: 玻璃门未打开，任务中止", "ERROR")
             return {"status": False, "message": "玻璃门未打开，任务中止"}
-
-        # step7. 设置机器人加热炉、玻璃门等关联设备状态
-        if not self._set_linked_devices_status_to_robot():
+        # step7. 设置机器人加热炉、玻璃门等关联设备状态（增加变量名称⭐）
+        if not self._set_linked_devices_status_to_robot(is_oven=True, oven_id=oven_id):
             self._log_step("严重错误: 发送PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "发送PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 炉盖、玻璃门开启确认信号 (M10.2/M10.3)", "INFO")
@@ -856,8 +971,8 @@ class ThermalFlowManager:
             self._log_step("严重错误: 玻璃门未打开，任务中止", "ERROR")
             return {"status": False, "message": "玻璃门未打开，任务中止"}
 
-        # step7. 告知机器人加热炉、玻璃门等关联设备状态
-        if not self._set_linked_devices_status_to_robot():
+        # step7. 告知机器人加热炉、玻璃门等关联设备状态（增加变量名称⭐）
+        if not self._set_linked_devices_status_to_robot(is_oven=True, oven_id=oven_id):
             self._log_step("严重错误: 发送PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "发送PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 炉盖、玻璃门开启确认信号 (M10.2/M10.3)", "INFO")
@@ -891,7 +1006,7 @@ class ThermalFlowManager:
             self._log_step("严重错误: 玻璃门未关闭，任务中止", "ERROR")
             return {"status": False, "message": "玻璃门未关闭，任务中止"}
 
-        return {"status": True, "message": f"{TASKS[TaskType.OVEN_DROP]}任务完成"}
+        return {"status": True, "message": f"{TASKS[TaskType.OVEN_TAKE]}任务完成"}
 
     def _task_cent_drop(self) -> Dict[str, Any]:
         """离心机放任务（保温炉 -> 离心机）
@@ -936,10 +1051,11 @@ class ThermalFlowManager:
             return {"status": False, "message": "离心机门未打开，任务中止"}
 
         # step6. 设置机器人离心机等关联设备状态
-        if not self._set_linked_devices_status_to_robot(False):
+        #⭐DB1.254 的期望值是 1，表示离心机门打开确认信号，写入时需要区分是炉子还是离心机，以及不同的ID
+        if not self._set_linked_devices_status_to_robot(is_oven=False, cent_id=1):
             self._log_step("严重错误: 发送PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "发送PLC许可信号失败，任务中止"}
-        self._log_step("已向PLC发送: 炉盖、玻璃门开启确认信号 (M10.2/M10.3)", "INFO")
+        self._log_step("已向PLC发送: 离心机门开启确认信号 (M10.4)", "INFO")
 
         # step7. 等待机器人任务完成
         if not self._wait_for_robot_task_completed(TaskType.CENT_DROP, need_home_check=False):
@@ -1006,7 +1122,8 @@ class ThermalFlowManager:
             return {"status": False, "message": "离心机门未打开，任务中止"}
 
         # step6. 设置机器人离心机等关联设备状态
-        if not self._set_linked_devices_status_to_robot(False):
+        #⭐DB1.254 的期望值是 1，表示离心机门打开确认信号，写入时需要区分是炉子还是离心机，以及不同的ID
+        if not self._set_linked_devices_status_to_robot(is_oven=False, cent_id=1):
             self._log_step("严重错误: 发送PLC许可信号失败，任务中止", "ERROR")
             return {"status": False, "message": "发送PLC许可信号失败，任务中止"}
         self._log_step("已向PLC发送: 离心机开启确认信号 (M10.4)", "INFO")
@@ -1033,7 +1150,7 @@ class ThermalFlowManager:
 
         return {"status": True, "message": f"{TASKS[TaskType.CENT_TAKE]}任务完成"}
 
-    def _task_cent_run(self, time: int = 120, rpm: int = 500) -> Dict[str, Any]:
+    def _task_cent_run(self, time: int = 20, rpm: int = 30) -> Dict[str, Any]:
         """离心机运行任务"""
         try:
             # step1. 设置时间和转速
@@ -1126,7 +1243,7 @@ class ThermalFlowManager:
 
     def load(self, shelf_id: int, oven_id: int, qty: int) -> Dict[str, Any]:
         """上料流程（货架1 -> 炉子）"""
-        
+        self.running = True
         if not self.robot_controller.connect():
             return {"status": False, "message": "机器人连接失败"}
         if not self.door_controller.connect():
@@ -1158,8 +1275,10 @@ class ThermalFlowManager:
 
         return {"status": True, "message": "上料流程完成"}
 
-    def unload(self, shelf_id: int, oven_id: int, qty: int) -> Dict[str, Any]:
+    def unload(self, oven_id: int, slot_id: int, shelf_id: int) -> Dict[str, Any]:
         '''（炉子 -> 离心机 -> 货架2）'''
+        self._log_step(f"unload参数: shelf_id={shelf_id}, oven_id={oven_id}, slot_id={slot_id}", "DEBUG")
+        self.running = True
         if not self.robot_controller.connect():
             return {"status": False, "message": "机器人连接失败"}
         if not self.door_controller.connect():
@@ -1172,7 +1291,7 @@ class ThermalFlowManager:
         ################################################################
         # === 步骤 1: 炉子取 ===
         ################################################################
-        result = self._task_oven_take(oven_id, qty)
+        result = self._task_oven_take(oven_id, slot_id)
         if not result.get("status"):
             self._log_step(f"严重错误: 炉子取任务失败: {result.get('message')}", "ERROR")
             return {"status": False, "message": f"炉子取任务失败: {result.get('message')}"}
@@ -1192,7 +1311,7 @@ class ThermalFlowManager:
         ################################################################
         # === 步骤 3: 运行离心机 ===
         ################################################################
-        result = self._task_cent_run(120, 500)
+        result = self._task_cent_run(20, 30)
         if not result.get("status"):
             self._log_step(f"严重错误: 离心机运行任务失败: {result.get('message')}", "ERROR")
             return {"status": False, "message": f"离心机运行任务失败: {result.get('message')}"}
@@ -1252,7 +1371,7 @@ class ThermalFlowManager:
             #########################################################
             # 3. 下料 #
             #########################################################
-            # result = self.unload(ShelfType.SHELF_2.value, oven_id, qty)
+            # result = self.unload(oven_id, qty, ShelfType.SHELF_2.value)
             # if not result.get("status"):
             #     self._log_step(f"严重错误: 下料任务失败: {result.get('message')}", "ERROR")
             #     return self._return_with_error(f"下料任务失败: {result.get('message')}")

@@ -66,22 +66,26 @@ class CentrifugeController(ModbusControlledDevice):
         return cmd_part + crc
 
     def send_raw(self, hex_cmd):
-        """发送原始Modbus命令并接收响应"""
-        if not self.is_connected:
-            return {"status": "error", "message": "设备未连接"}
-        
+        """发送原始Modbus命令并接收响应（短连接模式，防止 WinError 10053）"""
+        # 每次调用重新建立连接
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+
         try:
-            # 清空缓冲区
-            self.sock.settimeout(0.1)
+            # 连接设备
+            sock.connect((self.modbus_addr, self.modbus_port))
+            
+            # 清空缓冲区（防止读到脏数据）
+            sock.settimeout(0.1)
             try:
-                while self.sock.recv(1024):
+                while sock.recv(1024):
                     pass
             except:
                 pass
-            self.sock.settimeout(self.timeout)
+            sock.settimeout(self.timeout)
 
             # 发送指令
-            self.sock.sendall(hex_cmd)
+            sock.sendall(hex_cmd)
 
             # 接收数据
             buffer = b''
@@ -91,7 +95,7 @@ class CentrifugeController(ModbusControlledDevice):
             
             while time.time() - start_time < 6:
                 try:
-                    chunk = self.sock.recv(1024)
+                    chunk = sock.recv(1024)
                     if not chunk:
                         break
                     buffer += chunk
@@ -125,36 +129,25 @@ class CentrifugeController(ModbusControlledDevice):
             return self.result
 
         except Exception as e:
-            self.result = {"status": "error", "message": str(e)}
+            self.result = {"status": "error", "message": f"通信异常: {str(e)}"}
             return self.result
 
+        finally:
+            # 核心修复点：无论成功失败，每次通信结束后必须彻底关闭 Socket
+            sock.close()
+
     def connect(self):
-        """连接Modbus设备"""
-
-        if self.is_connected:
-            return True
-
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.settimeout(self.timeout)
-            self.sock.connect((self.modbus_addr, self.modbus_port))
-            self.is_connected=True
+        """测试连接Modbus设备"""
+        # 由于改用短连接，这里只需要发一条测试指令即可验证连通性
+        test_result = self.send_raw(CENT_CMDS['read_all'])
+        if test_result.get("status") == "success":
+            self.is_connected = True
+            self.message = "离心机连接成功"
             self.status = DeviceStatus.CONNECTED
-            # 测试连接：发送读取命令
-            test_result = self.send_raw(CENT_CMDS['read_all'])
-            if test_result.get("status") == "success":
-                self.is_connected = True
-                self.message = "离心机连接成功"
-                self.status = DeviceStatus.CONNECTED
-                return True
-            else:
-                self.is_connected = False
-                self.message = f"离心机连接失败: {test_result.get('message', '未知错误')}"
-                self.status = DeviceStatus.DISCONNECTED
-                return False
-        except Exception as e:
+            return True
+        else:
             self.is_connected = False
-            self.message = f"离心机连接异常: {str(e)}"
+            self.message = f"离心机连接失败: {test_result.get('message', '未知错误')}"
             self.status = DeviceStatus.DISCONNECTED
             return False
 
@@ -171,11 +164,11 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def start(self):
         """启动离心机"""
-        if not self.is_connected:
-            self.message = "设备未连接"
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.message = "设备未连接"
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         
         result = self.send_raw(CENT_CMDS['start'])
         if result.get("status") == "success":
@@ -192,11 +185,11 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def stop(self):
         """停止离心机"""
-        if not self.is_connected:
-            self.message = "设备未连接"
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.message = "设备未连接"
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         
         result = self.send_raw(CENT_CMDS['stop'])
         if result.get("status") == "success":
@@ -213,10 +206,10 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def open_door(self):
         """打开离心机门"""
-        if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         result = self.send_raw(CENT_CMDS['open'])
         if result.get("status") == "success":
             self.message = "离心机门打开成功"
@@ -231,10 +224,10 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def close_door(self):
         """关闭离心机门"""
-        if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         result = self.send_raw(CENT_CMDS['close'])
         if result.get("status") == "success":
             self.message = "离心机门关闭成功"
@@ -249,10 +242,10 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def control_centrifuge(self, action: CentrifugeActionCode) -> dict:
         """控制离心机"""
-        if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         
         result = self.send_raw(CENT_CMDS[action.name.lower()])
         if result.get("status") == "success":
@@ -268,10 +261,10 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def set_speed(self, rpm: int):
         """设置转速"""
-        if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         result = self.send_raw(self.build_write_command(0x2101, rpm))
         if result.get("status") == "success":
             self.message = f"设置转速成功: {rpm} RPM"
@@ -287,10 +280,10 @@ class CentrifugeController(ModbusControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def set_time(self, time: int):
         """设置时间，单位：分钟"""
-        if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            self.status = DeviceStatus.DISCONNECTED
-            return self.result
+        #if not self.is_connected:
+        #    self.result = {"status": "error", "message": "设备未连接"}
+        #    self.status = DeviceStatus.DISCONNECTED
+        #    return self.result
         result = self.send_raw(self.build_write_command(0x2102, time))
         if result.get("status") == "success":
             self.message = f"设置时间成功: {time} 分钟"
@@ -386,7 +379,13 @@ class CentrifugeController(ModbusControlledDevice):
         """获取离心机门窗状态"""
         status = self.get_running_status()
         if status.get("status") == "success":
-            return CentrifugeDoorStatus(status.get("data")["door_window"])
+            val = status.get("data").get("door_window", 0)
+            try:
+                # 尝试安全转换
+                return CentrifugeDoorStatus(val)
+            except ValueError:
+                # 如果遇到 15552 这种非标数值，当作"未知/中间状态"处理，防止崩溃
+                return CentrifugeDoorStatus.UNKNOWN
         else:
             return CentrifugeDoorStatus.UNKNOWN
 
@@ -394,14 +393,20 @@ class CentrifugeController(ModbusControlledDevice):
         """获取离心机运行状态"""
         status = self.get_running_status()
         if status.get("status") == "success":
-            return CentrifugeStatus(status.get("data")["run_state"])
+            val = status.get("data").get("run_state", 0)
+            try:
+                # 尝试安全转换
+                return CentrifugeStatus(val)
+            except ValueError:
+                # 同样防护运行状态
+                return CentrifugeStatus.UNKNOWN
         else:
             return CentrifugeStatus.UNKNOWN
 
     def get_running_status(self) -> dict:
         """获取设备运行状态信息"""
-        if not self.is_connected:
-            return {"status": "error", "message": "设备未连接"}
+        #if not self.is_connected:
+        #    return {"status": "error", "message": "设备未连接"}
         
         # 读取实时状态
         result = self.get_result()
@@ -412,9 +417,7 @@ class CentrifugeController(ModbusControlledDevice):
 
     def get_result(self) -> dict:
         """获取设备状态结果"""
-        if not self.is_connected:
-            self.result = {"status": "error", "message": "设备未连接"}
-            return self.result
+        # 【修改点1】删除 if not self.is_connected: 的判断，直接尝试通信
         
         # 读取实时状态
         result = self.send_raw(CENT_CMDS['read_all'])
@@ -423,9 +426,14 @@ class CentrifugeController(ModbusControlledDevice):
             if len(data) < 33:
                 self.result = {"status": "error", "message": "数据不完整"}
             else:
+                # 【修改点2】确保传给解析函数的是 bytes 对象，防止 struct.unpack 报错
+                if isinstance(data, list):
+                    data = bytes(data)
+                
                 self.result = {"status": "success", "data": self._parse_status_data(data)}
         else:
             self.result = {"status": "error", "message": f"读取状态失败: {result.get('message', '未知错误')}"}
+
         return self.result
 
     def get_message(self) -> str:

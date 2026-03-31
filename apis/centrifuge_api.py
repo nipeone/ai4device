@@ -40,16 +40,18 @@ def get_centrifuge_status() -> CentrifugeStatusResponse:
         else:
             parsed_data = CentrifugeRunningStatus(
                 actual_rpm = data.get('actual_rpm'),
-                remain_time = cent_format_time(data.get('remain_time')),
-                run_state = CENT_RUN_MAP.get(data.get('run_state', 0)),
-                rotor_state = CENT_ROTOR_MAP.get(data.get('rotor_state'), "静止"),
-                fault_code = CENT_FAULT_MAP.get(data.get('fault_code'), "未知故障码"),
-                door_window_state = CENT_DOOR_MAP.get(data.get('door_window'), "未知代码"),
-                door_lid_state = CENT_LID_MAP.get(data.get('door_lid'), "未知代码"),
-                actual_time = data.get('run_time'),
-                setted_rpm = data.get('setted_rpm'),
-                setted_time = data.get('setted_time'),
-                centrifuge_force = data.get('centrifuge_force')
+                run_time = data.get('run_time', 0),
+                setted_rpm = data.get('setted_rpm', 0),
+                setted_time = data.get('setted_time', 0),
+                centrifuge_force = data.get('centrifuge_force', 0),
+
+                remain_time = cent_format_time(data.get('remain_time', 0)),
+                run_state = CENT_RUN_MAP.get(data.get('run_state'), "状态未知"),
+                rotor_state = CENT_ROTOR_MAP.get(data.get('rotor_state'), "不定态"),
+                fault_code = CENT_FAULT_MAP.get(data.get('fault_code'), f"未知故障码({data.get('fault_code')})"),
+                door_window = CENT_DOOR_MAP.get(data.get('door_window'), "中间状态"),
+                door_lid = CENT_LID_MAP.get(data.get('door_lid'), "中间状态")
+
             ).model_dump()
         return CentrifugeStatusResponse(code=200, message="离心机运行状态获取成功", data=parsed_data)
 
