@@ -1,0 +1,520 @@
+{
+  "task_setup": {
+    "subtype": null,
+    "powder_100_30": false,
+    "powder_30_100": false,
+    "added_slots": ""
+  },
+  "task_id": 0,
+  "task_name": "xy001",
+  "is_audit_log": 1,
+  "type": 2,
+  "layout_list": [
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 0,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b03d",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Sb",
+        "chemical_id": 44,
+        "SSSI": "2-00-25-9",
+        "add_weight": 535.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 1,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b03e",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Sb",
+        "chemical_id": 44,
+        "SSSI": "2-00-25-9",
+        "add_weight": 535.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 2,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b03f",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Sb",
+        "chemical_id": 44,
+        "SSSI": "2-00-25-9",
+        "add_weight": 459.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 3,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b040",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Sb",
+        "chemical_id": 44,
+        "SSSI": "2-00-25-9",
+        "add_weight": 535.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 4,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b041",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Sb",
+        "chemical_id": 44,
+        "SSSI": "2-00-25-9",
+        "add_weight": 535.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 5,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b042",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Sb",
+        "chemical_id": 44,
+        "SSSI": "2-00-25-9",
+        "add_weight": 535.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 6,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b043",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Bi",
+        "chemical_id": 43,
+        "SSSI": "2-00-23-7",
+        "add_weight": 767,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 7,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b044",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Bi",
+        "chemical_id": 43,
+        "SSSI": "2-00-23-7",
+        "add_weight": 767,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 8,
+      "unit_row": 0,
+      "unit_id": "unit-19d4c18b045",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Bi",
+        "chemical_id": 43,
+        "SSSI": "2-00-23-7",
+        "add_weight": 767,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 0,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b046",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Ge",
+        "chemical_id": 41,
+        "SSSI": "2-00-21-5",
+        "add_weight": 319.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 1,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b047",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Ge",
+        "chemical_id": 41,
+        "SSSI": "2-00-21-5",
+        "add_weight": 319.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 2,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b048",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Ge",
+        "chemical_id": 41,
+        "SSSI": "2-00-21-5",
+        "add_weight": 273.9,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 3,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b049",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Ge",
+        "chemical_id": 41,
+        "SSSI": "2-00-21-5",
+        "add_weight": 319.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 4,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b04a",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Ge",
+        "chemical_id": 41,
+        "SSSI": "2-00-21-5",
+        "add_weight": 319.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 5,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b04b",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Ge",
+        "chemical_id": 41,
+        "SSSI": "2-00-21-5",
+        "add_weight": 319.2,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 6,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b04c",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Te",
+        "chemical_id": 37,
+        "SSSI": "2-00-17-9",
+        "add_weight": 3746.4,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 7,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b04d",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Te",
+        "chemical_id": 37,
+        "SSSI": "2-00-17-9",
+        "add_weight": 3746.4,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 8,
+      "unit_row": 1,
+      "unit_id": "unit-19d4c18b04e",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Te",
+        "chemical_id": 37,
+        "SSSI": "2-00-17-9",
+        "add_weight": 3746.4,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 0,
+      "unit_row": 2,
+      "unit_id": "unit-19d4c18b04f",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Se",
+        "chemical_id": 45,
+        "SSSI": "2-00-26-0",
+        "add_weight": 2082.6,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 1,
+      "unit_row": 2,
+      "unit_id": "unit-19d4c18b050",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Se",
+        "chemical_id": 45,
+        "SSSI": "2-00-26-0",
+        "add_weight": 2082.6,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 2,
+      "unit_row": 2,
+      "unit_id": "unit-19d4c18b051",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Se",
+        "chemical_id": 45,
+        "SSSI": "2-00-26-0",
+        "add_weight": 2082.6,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 3,
+      "unit_row": 2,
+      "unit_id": "unit-19d4c18b052",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Te",
+        "chemical_id": 37,
+        "SSSI": "2-00-17-9",
+        "add_weight": 2406.3,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 4,
+      "unit_row": 2,
+      "unit_id": "unit-19d4c18b053",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Te",
+        "chemical_id": 37,
+        "SSSI": "2-00-17-9",
+        "add_weight": 2406.3,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    },
+    {
+      "layout_code": "",
+      "src_layout_code": "",
+      "resource_type": "CC10R10C",
+      "tray_QR_code": "",
+      "status": 0,
+      "QR_code": "",
+      "unit_type": "exp_add_powder",
+      "unit_column": 5,
+      "unit_row": 2,
+      "unit_id": "unit-19d4c18b054",
+      "process_json": {
+        "resource_type": "CC10R10C",
+        "substance": "Te",
+        "chemical_id": 37,
+        "SSSI": "2-00-17-9",
+        "add_weight": 2406.3,
+        "offset": 0.3,
+        "custom": { "unit": "mg", "unitOptions": ["mg", "g"] }
+      }
+    }
+  ],
+  "added_slots": "",
+  "task_template_id_list": []
+}

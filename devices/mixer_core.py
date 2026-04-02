@@ -18,7 +18,8 @@ from schemas.mixer import (
     BatchStartTaskRequest,
     OpTaskRequest,
     GetTokenRequest,
-    GetTokenResponse
+    GetTokenResponse,
+    GetSetupResponse
 )
 from logger import sys_logger as logger
 
@@ -87,6 +88,23 @@ class MixerController(RestAPIControlledDevice):
         self.api_headers = {}
         self.message = "配料设备已断开连接"
         self.status = DeviceStatus.DISCONNECTED
+
+    def get_setup(self) -> Dict[str, Any]:
+        """
+        获取设置信息（GetSetUp）
+        :return: 设置信息
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        try:
+            response = requests.get(f"{self.api_base_url}/api/GetSetUp", headers=self.api_headers)
+            response.raise_for_status()
+            data = GetSetupResponse(**response.json())
+            return {"status": "success", "data": data}
+        except requests.exceptions.RequestException as e:
+            self.message = f"获取设置信息失败: {str(e)}"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
 
     def get_task_info(self, task_id: Optional[int] = None) -> Dict[str, Any]:
         """

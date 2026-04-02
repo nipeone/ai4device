@@ -93,6 +93,18 @@ class MixFlowManager:
         return {"status": False, "message": message}
 
     def run(self, mixer_task_model: AddTaskRequest):
+        ''' 按照以下顺序执行：
+        ## 执行顺序
+        1. 点击创建任务时
+          1. GetSetUp
+        2. 点击保存任务时
+          1. AddTask
+          2. GetResourceInfo
+          3. GetTaskInfo
+          4. GetResourceInfo
+          5. GetSetUp
+        '''
+
         try:
             if self._stop_requested:
                 self._stop_requested = False
@@ -109,6 +121,9 @@ class MixFlowManager:
             # if not self._wait_for_confirm("请确认配料设备就绪，然后点击确认", timeout=300):
             #     return {"status": False, "message": "配料设备就绪确认超时或取消"}
 
+            ########## 新增步骤: SetUp  ##########
+            self.mix_controller.get_setup()
+
             ########## 步骤1: 创建任务  ##########
             if not self.running:
                 return self._return_with_error("用户停止实验")
@@ -121,8 +136,18 @@ class MixFlowManager:
             task_id = rtn.get("data").task_id
             self._log_step(f"新任务创建成功，task_id = {task_id}", "SUCCESS")
 
+            resource_info = self.mix_controller.get_resource_info()
+            self._log_step(f"资源信息: 获取成功", "SUCCESS")
+
             status = self.mix_controller.get_task_info(task_id)
             self._log_step(f"任务信息: {status}", "SUCCESS")
+
+            resource_info = self.mix_controller.get_resource_info()
+            self._log_step(f"资源信息: 获取成功", "SUCCESS")
+
+            setup = self.mix_controller.get_setup()
+            self._log_step(f"设置信息: 获取成功", "SUCCESS")
+
 
             ########## 步骤2: 等待启动配料任务 ##########
             if not self.running:

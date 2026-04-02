@@ -60,6 +60,22 @@ class TaskSetup(BaseModel):
     powder_30_100: bool = False  # 30-100目粉末标识
     added_slots: str = ""  # 新增槽位
 
+class GetSetupResponse(BaseModel):
+    required_tray_code: bool = False
+    required_medium_code: bool = False
+    method_audit_log: bool = True
+    task_audit_log: bool = True
+    addition_timeout: int = 360
+    accuracy: float = 0.5
+    substance_shortage_nums: int = 5
+    created_at: str
+    updated_at: str
+    weight_node: int = 45
+    accuracy_30mL: float = 0.3
+    accuracy_100mL: float = 0.3
+    small_substance_shortage_nums: int = 100
+    big_substance_shortage_nums: int = 500
+
 # 主任务模型（继承BaseModel）
 class AddTaskRequest(BaseModel):
     """配料设备任务主模型"""
@@ -73,15 +89,16 @@ class AddTaskRequest(BaseModel):
     task_template_id_list: List[Any] = Field(default=[], description="模板ID列表, 如果有填表示是通过模板配置的实验")
 
 class AddTaskResponse(BaseModel):
-    code: int
-    msg: str
-    result: Optional[Any]
-    data: Optional[Any]
+    code: int = 200
+    msg: str = "success"
+    result: Optional[Any] = None
+    data: Optional[Any] = None
     task_id: int
     substance_shortage_list: Dict[str, Any] = {}
 
 class GetTaskInfoRequest(BaseModel):
     task_id: int
+    roll: int = 0
 
 class GetResourceInfoRequest(BaseModel):
     roll: int
@@ -91,7 +108,6 @@ class GetChemicalsRequest(BaseModel):
     offset: int = 0
     limit: int = 20
     query_key: Optional[str] = None
-
 
 class ChemicalListItem(BaseModel):
     fid: int
@@ -179,8 +195,8 @@ class GetTaskInfoResponse(BaseModel):
     creator: str
     task_begin_time: Optional[Any]
     task_end_time: Optional[Any]
-    created_at: int
-    updated_at: int
+    created_at: float
+    updated_at: float
     is_audit_log: int = 1
     task_template_id_list: List[Any] = []  # 模板ID列表（空数组）
     task_setup: TaskSetup
@@ -196,7 +212,6 @@ class OpTaskRequest(BaseModel):
     quick_cap: int = 1
     use_tip_type: str = ""
     pack_policy: Optional[Any] = None
-
 
 class IngredientItem(BaseModel):
     substance: str

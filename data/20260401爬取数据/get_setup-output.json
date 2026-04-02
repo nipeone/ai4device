@@ -1,0 +1,16 @@
+{
+    "required_tray_code": false,
+    "required_medium_code": false,
+    "method_audit_log": true,
+    "task_audit_log": true,
+    "addition_timeout": 360,
+    "accuracy": 0.5,
+    "substance_shortage_nums": 5,
+    "created_at": "2023-02-06T16:00:27",
+    "updated_at": "2026-03-13T14:08:33",
+    "weight_node": 45,
+    "accuracy_30mL": 0.3,
+    "accuracy_100mL": 0.3,
+    "small_substance_shortage_nums": 100,
+    "big_substance_shortage_nums": 500
+}

@@ -972,7 +972,7 @@ class ExperimentOrchestrator:
                     "请先查询状态并完成确认或等待结束。"
                 )
             self._experiment_id = task_id
-            self._task_name = getattr(mixer_model, "task_name", None)
+            self._task_name = mixer_model.task_name or None
             self._phase = ExperimentPhase.IDLE
             # 原始请求（供后续总结使用，原始请求中包含各个方案的名称，而解析后的mixer_model不包含方案名称）
             self._raw_req = raw_req
