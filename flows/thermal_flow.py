@@ -16,11 +16,8 @@ from devices.oven_core import OvenController, OvenLidActionCode, OvenActionCode
 from schemas.door import DoorActionCode, DoorStatus
 from schemas.oven import OvenStatus, CurvePoint
 from schemas.centrifuge import CentrifugeDoorStatus, CentrifugeStatus
+import config
 
-try:
-    import config
-except Exception:
-    config = None
 
 
 class TaskType(Enum):
@@ -567,17 +564,17 @@ class ThermalFlowManager:
         return True
 
     def _wait_for_oven_operation_completed(self, oven_id: int, target_status: OvenStatus) -> bool:
-        """等待加热炉启动及停止，最多等3秒"""
-        self._log_step(f"正在等待加热炉{target_status}...", "INFO")
+        """等待加热炉启动或停止后状态达到 target_status（如 RUNNING / STOPPED）。"""
+        cap = config.OVEN_STATUS_TRANSITION_TIMEOUT_SEC or 120.0
+        self._log_step(f"正在等待加热炉{target_status}（最长 {cap:.0f}s）...", "INFO")
         start_time = time.time()
-        is_completed = False
-        while self.running and time.time() - start_time < 3.0:  # 最多等3秒
+        poll_sec = 1.0
+        while self.running and (time.time() - start_time) < cap:
             status = self.oven_controller.get_oven_status(oven_id)
             if status == target_status:
-                is_completed = True
-                break
-            time.sleep(2)
-        return is_completed
+                return True
+            time.sleep(poll_sec)
+        return False
 
     def _wait_for_oven_burn_completed(self, oven_id: int, points: List[CurvePoint]) -> bool:
         """等待加热炉燃烧完成，曲线中的时间为小时。若配置了 BURN_WAIT_CAP_SEC 则等待时间不超过该上限。
@@ -590,7 +587,7 @@ class ThermalFlowManager:
 
         # 计算燃烧时间（小时转秒 + 10 分钟冗余）
         burn_time = sum([p.time * 60 * 60 for p in points[:-1] if p.time > 0]) + 60 * 10
-        cap = getattr(config, "BURN_WAIT_CAP_SEC", 0) if config else 0
+        cap = config.BURN_WAIT_CAP_SEC or 0
         if cap > 0:
             burn_time = min(burn_time, cap)
             self._log_step(f"燃烧等待上限 {cap} 秒", "INFO")
