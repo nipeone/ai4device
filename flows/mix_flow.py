@@ -148,8 +148,12 @@ class MixFlowManager:
             resource_info = self.mix_controller.get_resource_info()
             self._log_step(f"资源信息: 获取成功", "SUCCESS")
 
-            setup = self.mix_controller.get_setup()
-            self._log_step(f"设置信息: 获取成功", "SUCCESS")
+            setup_rtn = self.mix_controller.get_setup()
+            if setup_rtn.get("status") != "success":
+                self._log_step(f"设置信息获取失败: {setup_rtn.get('message')}", "ERROR")
+                return self._return_with_error(f"设置信息获取失败: {setup_rtn.get('message')}")
+            setup = setup_rtn.get("data")
+            self._log_step(f"设置信息: {setup}", "SUCCESS")
 
 
             ########## 步骤2: 等待启动配料任务 ##########
@@ -160,13 +164,13 @@ class MixFlowManager:
             if check_rtn.get("status") != "success":
                 self._log_step(f"配料任务检查失败: {check_rtn.get('message')}", "ERROR")
                 return self._return_with_error(f"配料任务检查失败: {check_rtn.get('message')}")
-            self._log_step(f"配料任务检查成功: {check_rtn.get('data')}", "SUCCESS")
+            self._log_step(f"配料任务检查成功: {check_rtn}", "SUCCESS")
 
             start_rtn = self.mix_controller.batch_start_task([task_id])
             if start_rtn.get("status") != "success":
                 self._log_step(f"配料任务启动失败: {start_rtn.get('message')}", "ERROR")
                 return self._return_with_error(f"配料任务启动失败: {start_rtn.get('message')}")
-            self._log_step(f"配料任务启动成功: {start_rtn.get('data')}", "SUCCESS")
+            self._log_step(f"配料任务启动成功: {start_rtn}", "SUCCESS")
 
             self._log_step("等待任务完成...", "INFO")
             if not self._wait_for_task_finished(task_id):
