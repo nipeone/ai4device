@@ -26,7 +26,7 @@ def cent_get_value(data, i):
 def initialize_oven_curve_db():
     """初始化数据库表结构"""
     if not os.path.exists(config.FURNACE_DB_PATH):
-        os.makedirs(os.path.dirname(config.FURNACE_DB_PATH))
+        os.makedirs(os.path.dirname(config.FURNACE_DB_PATH), exist_ok=True)
         with sqlite3.connect(config.FURNACE_DB_PATH) as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS saved_curves (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

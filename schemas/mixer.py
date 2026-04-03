@@ -244,3 +244,13 @@ class MixerSummaryResponse(BaseModel):
     status: bool
     summary: MixerSummary
 
+class BatchStartTaskRequest(BaseModel):
+    task_ids: List[int]
+
+class BatchCheckTaskRequest(BatchStartTaskRequest):
+    pass
+
+class BatchCheckTaskResponse(BaseModel):
+    code: int
+    msg: Optional[str] = None
+    prompt_msg: Optional[Dict[str, Any]] = None

@@ -19,7 +19,9 @@ from schemas.mixer import (
     OpTaskRequest,
     GetTokenRequest,
     GetTokenResponse,
-    GetSetupResponse
+    GetSetupResponse,
+    BatchCheckTaskRequest,
+    BatchCheckTaskResponse
 )
 from logger import sys_logger as logger
 
@@ -314,6 +316,31 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": str(e)}
             return {"status": "error", "message": str(e)}
 
+    def batch_check_task(self, task_ids: List[int]) -> Dict[str, Any]:
+        """
+        批量检查任务（BatchCheckTask）
+        :param task_ids: 任务id列表
+        :return: 批量检查结果
+        """
+        if not self.is_connected:
+            return {"status": "error", "message": "设备未连接"}
+        
+        try:
+            payload = BatchCheckTaskRequest(task_ids=task_ids)
+            response = requests.post(
+                f"{self.api_base_url}/api/BatchCheckTask",
+                json=payload.model_dump(),
+                timeout=30,
+                headers=self.api_headers
+            )
+            response.raise_for_status()
+            data = BatchCheckTaskResponse(**response.json())
+            return {"status": "success", "data": data}
+        except requests.exceptions.RequestException as e:
+            self.message = f"批量检查任务失败: {str(e)}"
+            self.result = {"status": "error", "message": str(e)}
+            return {"status": "error", "message": str(e)}
+
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def batch_start_task(self, task_ids: List[int]) -> Dict[str, Any]:
         """
@@ -412,6 +439,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": self.message}
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def del_task(self, task_id: int) -> Dict[str, Any]:
         """
         删除任务（DelTask）

@@ -103,6 +103,9 @@ class MixFlowManager:
           3. GetTaskInfo
           4. GetResourceInfo
           5. GetSetUp
+        3. 点击启动任务时
+          1. BatchCheckTask
+          2. BatchStartTask
         '''
 
         try:
@@ -153,6 +156,12 @@ class MixFlowManager:
             if not self.running:
                 return self._return_with_error("用户停止实验")
             self._log_step("步骤2: 等待启动配料任务...", "INFO")
+            check_rtn = self.mix_controller.batch_check_task([task_id])
+            if check_rtn.get("status") != "success":
+                self._log_step(f"配料任务检查失败: {check_rtn.get('message')}", "ERROR")
+                return self._return_with_error(f"配料任务检查失败: {check_rtn.get('message')}")
+            self._log_step(f"配料任务检查成功: {check_rtn.get('data')}", "SUCCESS")
+
             start_rtn = self.mix_controller.batch_start_task([task_id])
             if start_rtn.get("status") != "success":
                 self._log_step(f"配料任务启动失败: {start_rtn.get('message')}", "ERROR")
