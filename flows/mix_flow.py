@@ -164,6 +164,9 @@ class MixFlowManager:
             if check_rtn.get("status") != "success":
                 self._log_step(f"配料任务检查失败: {check_rtn.get('message')}", "ERROR")
                 return self._return_with_error(f"配料任务检查失败: {check_rtn.get('message')}")
+            if check_rtn.get("data").code == 1200:
+                self._log_step(f"配料任务检查失败: {check_rtn.get('data').msg}", "ERROR")
+                return self._return_with_error(f"配料任务检查失败: {check_rtn.get('data').msg}")
             self._log_step(f"配料任务检查成功: {check_rtn}", "SUCCESS")
 
             start_rtn = self.mix_controller.batch_start_task([task_id])
