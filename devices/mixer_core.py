@@ -99,7 +99,7 @@ class MixerController(RestAPIControlledDevice):
         if not self.is_connected:
             return {"status": "error", "message": "设备未连接"}
         try:
-            response = requests.get(f"{self.api_base_url}/api/GetSetUp", headers=self.api_headers)
+            response = requests.post(f"{self.api_base_url}/api/GetSetUp", headers=self.api_headers)
             response.raise_for_status()
             data = GetSetupResponse(**response.json())
             return {"status": "success", "data": data}
