@@ -315,17 +315,17 @@ class MixerController(RestAPIControlledDevice):
             return {"status": "error", "message": str(e)}
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
-    def batch_start_task(self, task_id_list: List[int]) -> Dict[str, Any]:
+    def batch_start_task(self, task_ids: List[int]) -> Dict[str, Any]:
         """
         批量启动任务（BatchStartTask）
-        :param task_id_list: 任务id列表
+        :param task_ids: 任务id列表
         :return: 批量启动结果
         """
         if not self.is_connected:
             return {"status": "error", "message": "设备未连接"}
         
         try:
-            payload = {"task_id_list": task_id_list}
+            payload = {"task_ids": task_ids}
             response = requests.post(
                 f"{self.api_base_url}/api/BatchStartTask",
                 json=payload,
