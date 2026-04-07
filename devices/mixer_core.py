@@ -235,7 +235,7 @@ class MixerController(RestAPIControlledDevice):
             return {"status": "error", "message": "设备未连接"}
 
         try:
-            payload = add_task_request.model_dump()
+            payload = add_task_request.model_dump(exclude_unset=True)
             response = requests.post(
                 f"{self.api_base_url}/api/AddTask",
                 json=payload,

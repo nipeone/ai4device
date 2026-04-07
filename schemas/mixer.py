@@ -29,7 +29,7 @@ class CustomConfig(BaseModel):
 # 工艺JSON配置模型
 class ProcessJson(BaseModel):
     """布局项的工艺参数配置"""
-    resource_type: str = "CC10R10C"
+    resource_type: Optional[str] = None # 资源类型（如CC10R10C）
     substance: str = "Sb" # 物质名称（如氯化亚铜，"Sb"/"Bi"）
     chemical_id: Optional[int] = None # 化学品ID
     SSSI: Optional[str] = None # 化学物质登记号（如"2-00-25-9"）

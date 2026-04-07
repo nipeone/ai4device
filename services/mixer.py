@@ -192,9 +192,9 @@ class MixerService:
 
                 # 解析工艺JSON
                 process_json = ProcessJson(**{
-                    "resource_type": "CC10R10C",
+                    # "resource_type": "CC10R10C",
                     "substance": substance,
-                    "SSSI": sssi,
+                    # "SSSI": sssi,
                     "chemical_id": chemical_id,
                     "add_weight": float(weight),
                     "offset": 0.3,
@@ -212,7 +212,7 @@ class MixerService:
                     "unit_column": unit_column,
                     "unit_row": unit_row,
                     "unit_id": f"unit-{hex(unit_id_base+row_idx)[2:]}",
-                    "process_json": process_json
+                    "process_json": process_json.model_dump(exclude_unset=True)
                 })
                 
                 layout_list.append(layout_item)
