@@ -118,8 +118,8 @@ class ChemicalListItem(BaseModel):
     state: Optional[str] = None
     concentration_str: Optional[str] = None
     chemical_properties: Optional[str] = None
-    edit_operation: Optional[str] = None
-    delete_operation: Optional[str] = None
+    edit_operation: Optional[bool] = None
+    delete_operation: Optional[bool] = None
     preparation_method: Optional[str] = None
 
 class ChemicalData(BaseModel):

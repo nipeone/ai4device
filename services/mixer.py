@@ -4,7 +4,8 @@ from typing import Any, List, Tuple
 import uuid
 from datetime import datetime
 import re
-from schemas.mixer import AddTaskRequest, TaskSetup, LayoutListItem, ProcessJson
+from schemas.mixer import AddTaskRequest, TaskSetup, LayoutListItem, ProcessJson, ChemicalListItem
+from devices.mixer_core import mixer_controller
 
 SSSI_SUBSTANCE_MAP = {
     "0-7758-89-6": "CuCl（氯化亚铜）",
@@ -37,6 +38,12 @@ SSSI_SUBSTANCE_MAP = {
     "2-00-33-9": "Zn",
     "2-00-34-0": "LiCl"
 }
+
+def check_chemical_exists(chemical_name: str, chemical_list: List[ChemicalListItem]) -> Tuple[bool, int, str]:
+    for chemical in chemical_list:
+        if getattr(chemical, "name", None) == chemical_name:
+            return True, getattr(chemical, "fid", 0), getattr(chemical, "sssi", "")
+    return False, 0, ""
 
 def get_sssi_by_substance(name: str) -> str:
     for sssi, substance in SSSI_SUBSTANCE_MAP.items():
@@ -136,11 +143,20 @@ class MixerService:
         # 解析任务设置
         task_setup = TaskSetup(
             subtype=None,
-            powder_100_30=False,
-            powder_30_100=False,
+            powder_100_30=True,
+            powder_30_100=True,
             added_slots=""
         )
-        
+
+        # 获取化学品信息
+        chemical_list = []
+        chemicals = mixer_controller.get_chemicals()
+        if chemicals.get("status") != "success":
+            raise ValueError(f"获取化学品信息失败: {chemicals.get('message', '')}")
+        data = chemicals.get("data")
+        if data and getattr(data, "data", None) and getattr(data.data, "chemical_list", None):
+            chemical_list = data.data.chemical_list
+
         # 解析布局列表
         layout_list: List[LayoutListItem] = []
         unit_id_base = int(datetime.now().timestamp()*1000)
@@ -170,11 +186,16 @@ class MixerService:
                 unit_row = element_count    # 该行的第几个元素，变成托盘的行
                 # -----------------------
 
+                exists, chemical_id, sssi = check_chemical_exists(substance, chemical_list)
+                if not exists:
+                    raise ValueError(f"化学品 {substance} 不存在，请先添加化学品")
+
                 # 解析工艺JSON
                 process_json = ProcessJson(**{
                     "resource_type": "CC10R10C",
                     "substance": substance,
-                    "SSSI": sssi_code,
+                    "SSSI": sssi,
+                    "chemical_id": chemical_id,
                     "add_weight": float(weight),
                     "offset": 0.3,
                     "custom": {"unit": "mg","unitOptions": ["mg", "g"]}
