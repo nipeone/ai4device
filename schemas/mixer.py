@@ -254,3 +254,5 @@ class BatchCheckTaskResponse(BaseModel):
     code: int
     msg: Optional[str] = None
     prompt_msg: Optional[Dict[str, Any]] = None
+    data: Optional[List[Any]] = None
+    step: Optional[int] = None
