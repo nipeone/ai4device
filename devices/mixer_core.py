@@ -352,7 +352,7 @@ class MixerController(RestAPIControlledDevice):
             return {"status": "error", "message": "设备未连接"}
         
         try:
-            payload = {"task_ids": task_ids}
+            payload = {"task_ids": task_ids, "task_id": task_id[0]}
             response = requests.post(
                 f"{self.api_base_url}/api/BatchStartTask",
                 json=payload,
