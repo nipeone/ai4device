@@ -8,13 +8,25 @@ import random
 import time
 from typing import Dict, Any, List, Optional
 import threading
+import json
 
 from .base import DeviceStatus
 from schemas.robot import RobotSystemStatus, RobotHomeStatus
 from schemas.centrifuge import CentrifugeStatus, CentrifugeDoorStatus
 from schemas.oven import OvenStatus, OvenActionCode, OvenLidActionCode
 from schemas.oven import CurvePoint
-from schemas.mixer import GetTaskInfoResponse, TaskSetup, LayoutListItem, TaskStatus
+from schemas.mixer import (
+    GetTaskInfoResponse, 
+    TaskSetup, 
+    LayoutListItem, 
+    TaskStatus, 
+    AddTaskResponse, 
+    GetResourceInfoResponse, 
+    GetSetupResponse, 
+    BatchCheckTaskResponse,
+    GetChemicalsResponse
+)
+
 
 # Mock 动作随机延迟下限（秒）
 MOCK_DELAY_MIN = 10
@@ -486,11 +498,435 @@ class MockMixerController:
     def add_task(self, add_task_request) -> Dict[str, Any]:
         _mock_delay()
         self.current_task_id = 1
+        data = AddTaskResponse(**{
+            "code": 200,
+            "msg": "success",
+            "result": None,
+            "data": None,
+            "task_id": 1,
+            "substance_shortage_list": {}
+        })
         return {
             "status": "success",
-            "data": type("R", (), {"task_id": 1})(),
+            "data": data,
             "message": "任务创建成功",
         }
+
+    def get_setup(self) -> Dict[str, Any]:
+        _mock_delay()
+        data = GetSetupResponse(**{
+            "required_tray_code": False,
+            "required_medium_code": False,
+            "method_audit_log": True,
+            "task_audit_log": True,
+            "addition_timeout": 360,
+            "accuracy": 0.5,
+            "substance_shortage_nums": 5,
+            "created_at": "2023-02-06T16:00:27",
+            "updated_at": "2026-03-13T14:08:33",
+            "weight_node": 45,
+            "accuracy_30mL": 0.3,
+            "accuracy_100mL": 0.3,
+            "small_substance_shortage_nums": 100,
+            "big_substance_shortage_nums": 500
+        })
+        return {"status": "success", "data": data, "message": "任务检查成功"}
+
+    def get_resource_info(self) -> Dict[str, Any]:
+        _mock_delay()
+        data = GetResourceInfoResponse(**{
+            "code": 200,
+            "msg": "success",
+            "result": None,
+            "data": None,
+            "resource_list": [
+                {
+                    "fid": 1,
+                    "layout_code": "IPF1-1:-1",
+                    "working_code": "",
+                    "resource_type": "PF100M5R1C_2",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IPF1-1:-1",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769063050,
+                    "updated_at": 1773381468,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 17,
+                    "layout_code": "IPF1-1:0",
+                    "working_code": "",
+                    "resource_type": "PF100M5R1C_2",
+                    "substance": "Te",
+                    "chemical_id": 37,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 20000.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 25000.0,
+                    "available_volume": 0.0,
+                    "available_weight": 25000.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "g",
+                    "source_layout_code": "IPF1-1:0",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769064153,
+                    "updated_at": 1773381468,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 2,
+                    "layout_code": "IPF1-1:1",
+                    "working_code": "",
+                    "resource_type": "PF100M5R1C_2",
+                    "substance": "Se",
+                    "chemical_id": 45,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 50000.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 36653.0,
+                    "available_volume": 0.0,
+                    "available_weight": 36853.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "g",
+                    "source_layout_code": "IPF1-1:1",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769063050,
+                    "updated_at": 1774938444,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 3,
+                    "layout_code": "IPF1-1:2",
+                    "working_code": "",
+                    "resource_type": "PF100M5R1C_2",
+                    "substance": "Bi",
+                    "chemical_id": 43,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 50000.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 44656.8,
+                    "available_volume": 0.0,
+                    "available_weight": 44656.8,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "g",
+                    "source_layout_code": "IPF1-1:2",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769063050,
+                    "updated_at": 1773381468,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 18,
+                    "layout_code": "IPF1-1:4",
+                    "working_code": "",
+                    "resource_type": "PF100M5R1C_2",
+                    "substance": "Ge",
+                    "chemical_id": 41,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 10000.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 7061.7,
+                    "available_volume": 0.0,
+                    "available_weight": 7061.7,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "g",
+                    "source_layout_code": "IPF1-1:4",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769064177,
+                    "updated_at": 1773381468,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 15,
+                    "layout_code": "IPF2-1:-1",
+                    "working_code": "",
+                    "resource_type": "PF30M5R1C_2",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IPF2-1:-1",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769063112,
+                    "updated_at": 1773380804,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 41,
+                    "layout_code": "IPF2-1:1",
+                    "working_code": "",
+                    "resource_type": "PF30M5R1C_2",
+                    "substance": "Ti",
+                    "chemical_id": 55,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 15000.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 14004.0,
+                    "available_volume": 0.0,
+                    "available_weight": 15000.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "g",
+                    "source_layout_code": "IPF2-1:1",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1773380804,
+                    "updated_at": 1773382957,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 16,
+                    "layout_code": "IPF2-1:2",
+                    "working_code": "",
+                    "resource_type": "PF30M5R1C_2",
+                    "substance": "Sb",
+                    "chemical_id": 44,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 50000.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 45651.2,
+                    "available_volume": 0.0,
+                    "available_weight": 45651.2,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "g",
+                    "source_layout_code": "IPF2-1:2",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1769063112,
+                    "updated_at": 1773380804,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 55,
+                    "layout_code": "IT-1:-1",
+                    "working_code": "",
+                    "resource_type": "CC10R10C",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IT-1:-1",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1774938494,
+                    "updated_at": 1774938494,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 56,
+                    "layout_code": "IT-1:0",
+                    "working_code": "",
+                    "resource_type": "CC10R10C",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IT-1:0",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1774938494,
+                    "updated_at": 1774938494,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 57,
+                    "layout_code": "IT-1:1",
+                    "working_code": "",
+                    "resource_type": "CC10R10C",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IT-1:1",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1774938494,
+                    "updated_at": 1774938494,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 58,
+                    "layout_code": "IT-1:2",
+                    "working_code": "",
+                    "resource_type": "CC10R10C",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IT-1:2",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1774938494,
+                    "updated_at": 1774938494,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 59,
+                    "layout_code": "IT-1:10",
+                    "working_code": "",
+                    "resource_type": "CC10R10C",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IT-1:10",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1774938494,
+                    "updated_at": 1774938494,
+                    "with_cap": False,
+                    "used": False
+                },
+                {
+                    "fid": 60,
+                    "layout_code": "IT-1:11",
+                    "working_code": "",
+                    "resource_type": "CC10R10C",
+                    "substance": "",
+                    "chemical_id": None,
+                    "material_batch_number": None,
+                    "initial_volume": 0.0,
+                    "initial_weight": 0.0,
+                    "cur_volume": 0.0,
+                    "cur_weight": 0.0,
+                    "available_volume": 0.0,
+                    "available_weight": 0.0,
+                    "tray_QR_code": "",
+                    "QR_code": "",
+                    "unit": "",
+                    "source_layout_code": "IT-1:11",
+                    "with_magneton": False,
+                    "usage_times": 0,
+                    "status": 0,
+                    "color": None,
+                    "created_at": 1774938494,
+                    "updated_at": 1774938494,
+                    "with_cap": False,
+                    "used": False
+                }
+            ]
+        })
+        return {"status": "success", "data": data, "message": "任务检查成功"}
+
+    def get_chemicals(self) -> Dict[str, Any]:
+        _mock_delay()
+        with open('data/mock/get_chemicallist-output.json', 'r') as f:
+            data = GetChemicalsResponse(**json.load(f))
+        return {"status": "success", "data": data, "message": "任务检查成功"}
 
     def get_task_info(self, task_id: Optional[int] = None) -> Dict[str, Any]:
         task_id = task_id or self.current_task_id or 1
@@ -511,9 +947,27 @@ class MockMixerController:
         )
         return {"status": "success", "data": data, "message": "ok"}
 
+    def batch_check_task(self, task_id_list: List[int]) -> Dict[str, Any]:
+        _mock_delay()
+        data = BatchCheckTaskResponse(**{
+            "code": 200,
+            "msg": "success",
+            "result": None,
+            "data": None,
+            "prompt_msg": None
+        })
+        return {"status": "success", "data": data, "message": "任务检查成功"}
+
     def batch_start_task(self, task_id_list: List[int]) -> Dict[str, Any]:
         _mock_delay()
-        return {"status": "success", "data": {"task_ids": task_id_list}, "message": "任务启动成功"}
+        data = {
+            "code": 200,
+            "msg": "success",
+            "result": None,
+            "data": None,
+            "prompt_msg": None
+        }
+        return {"status": "success", "data": data, "message": "任务启动成功"}
 
     def stop_task(self, task_id: int) -> Dict[str, Any]:
         _mock_delay()

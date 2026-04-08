@@ -91,7 +91,7 @@ async def start_experiment(req: StartExperimentRequest):
         return _wrap_error(str(e), 400)
     add_task = llm_output_to_add_task_request(recommend_recipes)
     curve_points = llm_output_to_curve_points(recommend_recipes)
-    logger.info(f"add_task: {add_task}, scheme_manifest: {len(scheme_manifest)} tube(s)")
+    logger.info(f"add_task: {add_task.model_dump(exclude_unset=True)}, scheme_manifest: {len(scheme_manifest)} tube(s)")
     logger.info(f"curve_points: {curve_points}")
     thermal_params = {
         "oven_id": 3,
