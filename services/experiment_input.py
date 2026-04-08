@@ -20,7 +20,7 @@ from schemas.llm_output import (
     TemperatureProgram,
     ProcessRecipe,
 )
-from schemas.mixer import AddTaskRequest, LayoutListItem, ProcessJson, ChemicalListItem
+from schemas.mixer import AddTaskRequest, LayoutListItem, ProcessJson, ChemicalListItem, TaskSetup
 from schemas.oven import CurvePoint
 from devices.mixer_core import mixer_controller
 
@@ -415,6 +415,7 @@ def llm_output_to_add_task_request(
         return False, 0, ""
 
     layout_list: List[LayoutListItem] = []
+    unit_id_base = int(datetime.now().timestamp()*1000)
     for col_idx, scheme in enumerate(schemes):
         recipe: Optional[ProcessRecipe] = scheme.process_recipe
         if not recipe:
@@ -456,15 +457,17 @@ def llm_output_to_add_task_request(
             if row_idx == flux_merge_idx:
                 add_weight_g += flux_mass_g
             add_weight_mg = round(add_weight_g * G_PER_MG, 2)
-            process_json = ProcessJson(
-                resource_type="CC10R10C",
-                substance=substance,
-                add_weight=add_weight_mg,
-                offset=0.0,
-            )
+            process_json = ProcessJson(**{
+                    # "resource_type": "CC10R10C",
+                    "substance": substance,
+                    # "chemical_id": chemical_id,
+                    "add_weight": float(add_weight_mg),
+                    "offset": 0.3,
+                    "custom": {"unit": "mg","unitOptions": ["mg", "g"]}
+                })
             if check_chemical:
                 process_json.chemical_id = chemical_id
-                process_json.SSSI = sssi
+                # process_json.SSSI = sssi
             layout_item = LayoutListItem(
                 layout_code="",
                 src_layout_code="",
@@ -475,7 +478,7 @@ def llm_output_to_add_task_request(
                 unit_type="exp_add_powder",
                 unit_column=col_idx,
                 unit_row=row_idx,
-                unit_id=f"unit-{str(uuid.uuid4())[:8]}",
+                unit_id=f"unit-{hex(unit_id_base+col_idx)[2:]}",
                 process_json=process_json,
             )
             layout_list.append(layout_item)
@@ -488,14 +491,14 @@ def llm_output_to_add_task_request(
                         raise ValueError(f"化学品（助熔剂）{flux_substance} 不存在，请先添加化学品")
                 flux_mass_mg = round(flux_mass_g * G_PER_MG, 2)
                 process_json_flux = ProcessJson(
-                    resource_type="CC10R10C",
+                    # resource_type="CC10R10C",
                     substance=flux_substance,
                     add_weight=flux_mass_mg,
                     offset=0.0,
                 )
                 if check_chemical:
                     process_json_flux.chemical_id = chemical_id
-                    process_json_flux.SSSI = sssi
+                    # process_json_flux.SSSI = sssi
                 layout_list.append(
                     LayoutListItem(
                         layout_code="",
@@ -513,17 +516,23 @@ def llm_output_to_add_task_request(
                 )
 
     if not layout_list:
-        layout_list.append(
-            LayoutListItem(
-                unit_id="placeholder",
-                process_json=ProcessJson(substance="未指定", add_weight=0),
-                unit_column=0,
-                unit_row=0,
-            )
-        )
+        raise ValueError(f"方案 scheme={task_name} 的布局信息为空")
+
+    task_type = 2
+    is_audit_log = 1
+    task_setup = TaskSetup(
+        subtype=None,
+        powder_100_30=True,
+        powder_30_100=True,
+        added_slots=""
+    )
 
     return AddTaskRequest(
+        task_setup=task_setup,
+        task_id=0, # 新建任务
         task_name=task_name,
+        is_audit_log=is_audit_log,
+        type=task_type,
         layout_list=layout_list,
     )
 
