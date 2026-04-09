@@ -544,8 +544,23 @@ class ExperimentOrchestrator:
             if self._stop_requested:
                 return False
             if event.wait(timeout=1.0):
+                # stop() 也会 set 各确认事件用于唤醒等待线程，需优先判停，避免误判为“已确认”
+                if self._stop_requested:
+                    return False
                 return True
         return False
+
+    def _reset_subflow_stop_flags(self) -> None:
+        """重启实验前清理子流程 stop 标志，避免 stop 后首次 start 被历史停止状态误杀。"""
+        for mgr in (mix_flow_mgr, thermal_flow_mgr, xrd_flow_mgr):
+            try:
+                if hasattr(mgr, "_stop_requested"):
+                    setattr(mgr, "_stop_requested", False)
+                if hasattr(mgr, "running"):
+                    setattr(mgr, "running", False)
+            except Exception:
+                # 清理失败不阻断主流程，后续 run 会给出明确错误
+                pass
 
     def _mock_sleep_with_stop_check(self, min_sec: int, max_sec: int) -> None:
         """
@@ -961,6 +976,13 @@ class ExperimentOrchestrator:
         用于热处理阶段；若在 start 时传入 curve_points，则无需在 confirm_thermal_load 再传曲线。
         返回包含 experiment_id、phase、phase_label 的字典。
         """
+        # 若上一次 stop 后后台线程仍在收尾，短暂等待，避免新旧流程并发交叉。
+        old_thread: Optional[threading.Thread] = None
+        with self._lock:
+            old_thread = self._runner_thread
+        if old_thread is not None and old_thread.is_alive():
+            old_thread.join(timeout=2.0)
+
         with self._lock:
             if self._phase not in (
                 ExperimentPhase.IDLE,
@@ -971,6 +993,9 @@ class ExperimentOrchestrator:
                     f"当前已有实验在运行或等待确认，阶段: {self._phase.value}。"
                     "请先查询状态并完成确认或等待结束。"
                 )
+            # 双重保护：若线程仍存活，拒绝启动，避免并发状态污染。
+            if self._runner_thread is not None and self._runner_thread.is_alive():
+                raise ValueError("上一轮实验正在停止收尾，请稍后重试。")
             self._experiment_id = task_id
             self._task_name = mixer_model.task_name or None
             self._phase = ExperimentPhase.IDLE
@@ -987,6 +1012,7 @@ class ExperimentOrchestrator:
             self._current_xrd_batch = None
             self._current_xrd_running = None
             self._pending_xrd_sample_ids = None
+            self._reset_subflow_stop_flags()
 
         try:
             manifest = (self._thermal_params or {}).get("scheme_manifest") if isinstance((self._thermal_params or {}).get("scheme_manifest"), list) else None

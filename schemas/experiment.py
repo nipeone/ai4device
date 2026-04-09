@@ -113,7 +113,7 @@ class StartExperimentResponse(BaseModel):
 
 class StartExperimentRequest(RecommendExperimentRecipes):
     """启动实验接口请求体"""
-    task_id: Optional[str] = Field(default=str(uuid.uuid4()), description="实验ID，不传则自动生成")
+    task_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()), description="实验ID，不传则自动生成")
     recommend_recipes: Optional[RecommendExperimentRecipes] = Field(None, description="推荐实验方案列表")
     recommend_recipes_str: Optional[str] = Field(default=None, description="推荐实验方案列表字符串")
 
