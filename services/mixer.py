@@ -6,6 +6,7 @@ from datetime import datetime
 import re
 from schemas.mixer import AddTaskRequest, TaskSetup, LayoutListItem, ProcessJson, ChemicalListItem
 from devices.mixer_core import mixer_controller
+from utils import generate_unit_id
 
 SSSI_SUBSTANCE_MAP = {
     "0-7758-89-6": "CuCl（氯化亚铜）",
@@ -211,7 +212,7 @@ class MixerService:
                     "unit_type": "exp_add_powder",
                     "unit_column": unit_column,
                     "unit_row": unit_row,
-                    "unit_id": f"unit-{hex(unit_id_base+row_idx)[2:]}",
+                    "unit_id": generate_unit_id(),
                     "process_json": process_json.model_dump(exclude_unset=True)
                 })
                 

@@ -13,6 +13,10 @@ from typing import Callable, Dict, Any
 
 import config
 
+def generate_unit_id():
+    time.sleep(0.001)
+    return f"unit-{hex(int(time.time() * 1000))[2:]}" 
+
 def cent_format_time(s):
     '''格式化时间'''
     m, s = divmod(s, 60)

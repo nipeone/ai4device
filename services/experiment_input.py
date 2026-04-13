@@ -11,6 +11,7 @@
 """
 import re
 from datetime import datetime
+import time
 from typing import List, Tuple, Optional
 import uuid
 
@@ -23,27 +24,50 @@ from schemas.llm_output import (
 from schemas.mixer import AddTaskRequest, LayoutListItem, ProcessJson, ChemicalListItem, TaskSetup
 from schemas.oven import CurvePoint
 from devices.mixer_core import mixer_controller
-
+from utils import generate_unit_id
 
 # 元素符号 -> 摩尔质量 (g/mol)，用于摩尔比 -> 质量比转换（标准原子量，常见值）
 ATOMIC_MASS: dict = {
     "H": 1.008, "He": 4.003, "Li": 6.94, "Be": 9.012, "B": 10.81, "C": 12.011,
-    "N": 14.007, "O": 15.999, "F": 19.00, "Ne": 20.18, "Na": 22.99, "Mg": 24.31,
+    "N": 14.007, "O": 15.999, "F": 18.998, "Ne": 20.18, "Na": 22.99, "Mg": 24.31,
     "Al": 26.98, "Si": 28.09, "P": 30.97, "S": 32.06, "Cl": 35.45, "Ar": 39.95,
-    "K": 39.10, "Ca": 40.08, "Sc": 44.96, "Ti": 47.87, "V": 50.94, "Cr": 52.00,
+    "K": 39.10, "Ca": 40.08, "Sc": 44.96, "Ti": 47.87, "V": 50.94, "Cr": 51.996,
     "Mn": 54.94, "Fe": 55.85, "Co": 58.93, "Ni": 58.69, "Cu": 63.55, "Zn": 65.38,
     "Ga": 69.72, "Ge": 72.63, "As": 74.92, "Se": 78.97, "Br": 79.90, "Kr": 83.80,
     "Rb": 85.47, "Sr": 87.62, "Y": 88.91, "Zr": 91.22, "Nb": 92.91, "Mo": 95.95,
-    "Tc": 98.0, "Ru": 101.1, "Rh": 102.9, "Pd": 106.4, "Ag": 107.9, "Cd": 112.4,
+    "Tc": 97.0, "Ru": 101.1, "Rh": 102.9, "Pd": 106.4, "Ag": 107.9, "Cd": 112.4,
     "In": 114.8, "Sn": 118.71, "Sb": 121.76, "Te": 127.60, "I": 126.90, "Xe": 131.29,
     "Cs": 132.91, "Ba": 137.33, "La": 138.91, "Ce": 140.12, "Pr": 140.91, "Nd": 144.24,
     "Pm": 145.0, "Sm": 150.36, "Eu": 151.96, "Gd": 157.25, "Tb": 158.93, "Dy": 162.50,
     "Ho": 164.93, "Er": 167.26, "Tm": 168.93, "Yb": 173.05, "Lu": 174.97,
     "Hf": 178.49, "Ta": 180.95, "W": 183.84, "Re": 186.21, "Os": 190.23, "Ir": 192.22,
     "Pt": 195.08, "Au": 196.97, "Hg": 200.59, "Tl": 204.38, "Pb": 207.2, "Bi": 208.98,
-    "Po": 209.0, "At": 210.0, "Rn": 222.0,
+    "Po": 209.0, "At": 210.0, "Rn": 222.0, "Fr": 223.0,   "Ra": 226.0,
+    "Ac": 227.0,   "Th": 232.038, "Pa": 231.036, "U": 238.029,
+    "Np": 237.0,   "Pu": 244.0,   "Am": 243.0,   "Cm": 247.0,
+    "Bk": 247.0,   "Cf": 251.0,   "Es": 252.0,   "Fm": 257.0,
+    "Md": 258.0,   "No": 259.0,   "Lr": 262.0,
+    "Rf": 267.0,   "Db": 270.0,   "Sg": 271.0,   "Bh": 270.0,
+    "Hs": 277.0,   "Mt": 278.0,   "Ds": 281.0,   "Rg": 282.0,
+    "Cn": 285.0,   "Nh": 286.0,   "Fl": 289.0,   "Mc": 290.0,
+    "Lv": 293.0,   "Ts": 294.0,   "Og": 294.0,
 }
 
+# 完整的118个元素符号集合
+ELEMENTS = {
+    "H","He","Li","Be","B","C","N","O","F","Ne",
+    "Na","Mg","Al","Si","P","S","Cl","Ar","K","Ca",
+    "Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn",
+    "Ga","Ge","As","Se","Br","Kr","Rb","Sr","Y","Zr",
+    "Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn",
+    "Sb","Te","I","Xe","Cs","Ba","La","Ce","Pr","Nd",
+    "Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb",
+    "Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg",
+    "Tl","Pb","Bi","Po","At","Rn","Fr","Ra","Ac","Th",
+    "Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm",
+    "Md","No","Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds",
+    "Rg","Cn","Nh","Fl","Mc","Lv","Ts","Og"
+}
 
 def get_molar_mass(substance: str) -> float:
     """
@@ -209,6 +233,243 @@ def _parse_ingredients_from_info(raw_material_info: str) -> List[str]:
     if "(" in s:
         s = s.split("(")[0].strip()
     return [x.strip() for x in s.split(",") if x.strip()]
+
+
+def parse_elements(text: str) -> List[str]:
+    """
+    从任意格式的文本中提取化学元素符号。
+    
+    支持各种格式：
+      - "Al, In, Se (按化学计量比 1:1:3)"  -> ["Al", "In", "Se"]
+      - "In2Se3"                            -> ["In", "Se"]
+      - "Cu0.5Zn0.5Fe2O4"                  -> ["Cu", "Zn", "Fe", "O"]
+      - "Al and Fe with trace Mn"           -> ["Al", "Fe", "Mn"]
+    """
+    if not text or not text.strip():
+        return []
+    
+    # 匹配所有"首字母大写 + 可选一个小写"的候选符号
+    candidates = re.findall(r"[A-Z][a-z]?", text)
+    
+    # 过滤：只保留真实存在于元素周期表中的符号，同时去重保留顺序
+    seen = set()
+    result = []
+    for c in candidates:
+        if c in ELEMENTS and c not in seen:
+            seen.add(c)
+            result.append(c)
+    
+    return result    
+
+# ── 1. 化合物摩尔质量计算 ─────────────────────────────────────────
+
+def parse_formula(formula: str) -> dict[str, float]:
+    """
+    解析化学式，返回各元素的原子个数。
+    支持：NaCl -> {"Na":1, "Cl":1}
+          Al2O3 -> {"Al":2, "O":3}
+          AlInSe3 -> {"Al":1, "In":1, "Se":3}
+    """
+    # 匹配「元素符号 + 可选数字」
+    tokens = re.findall(r"([A-Z][a-z]?)(\d*)", formula)
+    composition: dict[str, float] = {}
+    for elem, count in tokens:
+        if elem not in ATOMIC_MASS:
+            continue
+        composition[elem] = composition.get(elem, 0) + (float(count) if count else 1.0)
+    return composition
+
+
+def molar_mass_of(formula: str) -> float:
+    """
+    计算化学式的摩尔质量（g/mol）。
+    NaCl -> 58.44,  Al2O3 -> 101.96,  Se -> 78.971
+    """
+    composition = parse_formula(formula)
+    if not composition:
+        raise ValueError(f"无法解析化学式: '{formula}'")
+    return sum(ATOMIC_MASS[e] * n for e, n in composition.items())
+
+
+# ── 2. 解析助熔剂字段 ─────────────────────────────────────────────
+
+def parse_flux(
+    flux_normalized: Optional[str],
+    flux_info: Optional[str],
+) -> Optional[tuple[str, float]]:
+    """
+    解析助熔剂信息，返回 (化学式, 相对于原料的摩尔/质量比)。
+
+    支持格式：
+      "Na:(Al+In+Se)=2.7:1"      -> ("Na", 2.7)   # 助熔剂:原料 = 2.7:1
+      "NaCl:AlInSe3=2.7:1"       -> ("NaCl", 2.7)
+      "Na:原料=2.7:1"             -> ("Na", 2.7)
+      无助熔剂 / None             -> None
+    """
+    src = flux_normalized or flux_info or ""
+    src = src.strip()
+
+    # 明确表示无助熔剂
+    no_flux_keywords = ["not specified", "none", "无", "不使用", "self-flux"]
+    if not src or any(k in src.lower() for k in no_flux_keywords):
+        return None
+
+    # 提取比例（取第一组冒号分隔数字）
+    ratio_match = re.search(r"([\d.]+)\s*:\s*([\d.]+)", src)
+    if not ratio_match:
+        raise ValueError(f"无法从助熔剂字段提取比例: '{src}'")
+
+    flux_ratio  = float(ratio_match.group(1))  # 助熔剂份数
+    base_ratio  = float(ratio_match.group(2))  # 原料份数（通常为 1）
+    relative    = flux_ratio / base_ratio       # 助熔剂 / 原料 的倍数
+
+    # 提取助熔剂化学式（'=' 左侧，':' 之前的第一段）
+    left_side = src.split("=")[0] if "=" in src else src
+    formula_part = left_side.split(":")[0].strip()
+
+    # 清理括号和中文，保留字母数字
+    formula_clean = re.sub(r"[^A-Za-z0-9]", "", formula_part)
+    if not formula_clean:
+        raise ValueError(f"无法提取助熔剂化学式: '{src}'")
+
+    return formula_clean, relative
+
+
+# ── 3. 原料配比计算（复用之前逻辑） ──────────────────────────────
+
+def parse_ratio(ratio_str: str) -> list[float]:
+    nums = re.findall(r"\d+(?:\.\d+)?", ratio_str)
+    if not nums:
+        raise ValueError(f"无法解析比例: '{ratio_str}'")
+    return [float(n) for n in nums]
+
+
+def parse_normalized(normalized: str) -> tuple[list[str], list[float]]:
+    normalized = normalized.replace(" ", "")
+    elem_part, ratio_part = normalized.split("=", 1)
+    elements = parse_elements(elem_part.replace(":", " "))
+    ratios   = parse_ratio(ratio_part)
+    if len(elements) != len(ratios):
+        raise ValueError(f"元素数与比例数不一致: {elements} vs {ratios}")
+    return elements, ratios
+
+
+def parse_raw_info(raw_info: str) -> tuple[list[str], list[float]]:
+    elements  = parse_elements(raw_info)
+    bracket   = re.search(r"[(\[]([^)\]]+)[)\]]", raw_info)
+    ratio_src = bracket.group(1) if bracket else raw_info
+    ratios    = parse_ratio(ratio_src)
+    if len(elements) != len(ratios):
+        raise ValueError(f"元素数与比例数不一致: {elements} vs {ratios}")
+    return elements, ratios
+
+
+def extract_elements_and_ratios(
+    normalized: Optional[str],
+    raw_info:   Optional[str],
+) -> tuple[list[str], list[float]]:
+    if normalized:
+        try:
+            return parse_normalized(normalized)
+        except ValueError as e:
+            print(f"[WARN] 标准化字段解析失败({e})，回退到原始信息")
+    if raw_info:
+        return parse_raw_info(raw_info)
+    raise ValueError("normalized 和 raw_info 均为空")
+
+
+# ── 4. 统一配料计算入口 ───────────────────────────────────────────
+
+def compute_batch(
+    normalized:       Optional[str],
+    raw_info:         Optional[str],
+    flux_normalized:  Optional[str] = None,
+    flux_info:        Optional[str] = None,
+    total_mass_mg:    float = 5000.0,
+    mode:             str = "precursor_fixed",  # 或 "charge_fixed"
+) -> dict:
+    """
+    mode="precursor_fixed" : total_mass_mg 为原料质量，助熔剂额外累加（原行为）
+    mode="charge_fixed"    : total_mass_mg 为装管总量，原料+助熔剂共同瓜分
+    """
+    elements, ratios = extract_elements_and_ratios(normalized, raw_info)
+
+    # 各元素质量权重
+    elem_weighted = [r * ATOMIC_MASS[e] for r, e in zip(ratios, elements)]
+    elem_total_w  = sum(elem_weighted)
+
+    # 解析助熔剂
+    flux = parse_flux(flux_normalized, flux_info)
+
+    if mode == "precursor_fixed" or flux is None:
+        # ── 原料占满 total_mass_mg，助熔剂另算 ──────────────────
+        precursor_mg = total_mass_mg
+        precursor_mass = {
+            e: round(w / elem_total_w * precursor_mg, 4)
+            for e, w in zip(elements, elem_weighted)
+        }
+        flux_result = None
+        if flux:
+            flux_formula, relative = flux
+            flux_M      = molar_mass_of(flux_formula)
+            flux_moles  = relative * sum(ratios)
+            flux_mass   = round(flux_moles * flux_M / elem_total_w * precursor_mg, 4)
+            flux_result = {
+                "formula": flux_formula,
+                "moles":   round(flux_moles, 6),
+                "mass_mg": flux_mass,
+            }
+        total_charge = round(
+            precursor_mg + (flux_result["mass_mg"] if flux_result else 0), 4
+        )
+
+    elif mode == "charge_fixed":
+        # ── 原料+助熔剂共同瓜分 total_mass_mg ───────────────────
+        if flux is None:
+            # 无助熔剂时两种 mode 等价
+            precursor_mg = total_mass_mg
+            precursor_mass = {
+                e: round(w / elem_total_w * precursor_mg, 4)
+                for e, w in zip(elements, elem_weighted)
+            }
+            flux_result  = None
+            total_charge = total_mass_mg
+        else:
+            flux_formula, relative = flux
+            flux_M     = molar_mass_of(flux_formula)
+            flux_moles = relative * sum(ratios)
+
+            # 助熔剂质量权重（与原料权重同量纲，都是 g/mol × mol份）
+            flux_w = flux_moles * flux_M
+            total_w = elem_total_w + flux_w          # 原料 + 助熔剂 总权重
+
+            precursor_mg = round(elem_total_w / total_w * total_mass_mg, 4)
+            precursor_mass = {
+                e: round(w / total_w * total_mass_mg, 4)
+                for e, w in zip(elements, elem_weighted)
+            }
+            flux_mass   = round(flux_w / total_w * total_mass_mg, 4)
+            flux_result = {
+                "formula": flux_formula,
+                "moles":   round(flux_moles, 6),
+                "mass_mg": flux_mass,
+            }
+            total_charge = total_mass_mg
+
+    else:
+        raise ValueError(f"未知 mode: '{mode}'，可选 'precursor_fixed' 或 'charge_fixed'")
+
+    return {
+        "precursors": {
+            "elements": elements,
+            "ratios":   ratios,
+            "mass_mg":  precursor_mass,
+        },
+        "flux":               flux_result,
+        "total_precursor_mg": precursor_mg,
+        "total_charge_mg":    total_charge,
+        "mode":               mode,
+    }
 
 
 def _parse_flux_ratio(flux_standardization: str) -> Optional[Tuple[str, float, float]]:
@@ -415,14 +676,14 @@ def llm_output_to_add_task_request(
         return False, 0, ""
 
     layout_list: List[LayoutListItem] = []
-    unit_id_base = int(datetime.now().timestamp()*1000)
+    # unit_id_base = int(datetime.now().timestamp()*1000)
     for col_idx, scheme in enumerate(schemes):
         recipe: Optional[ProcessRecipe] = scheme.process_recipe
         if not recipe:
             raise ValueError(f"方案 col={col_idx} 的工艺参数为空")
         ingredients_str = (recipe.raw_material_info or "").strip()
         ratio_str = (recipe.raw_material_standardization or "").strip()
-        substances = _parse_ingredients_from_info(ingredients_str)
+        substances = parse_elements(ingredients_str)
         molar_ratios = _parse_ratio_string(ratio_str)
 
         flux_ratio_tuple = _parse_flux_ratio((recipe.flux_standardization or "").strip())
@@ -478,7 +739,7 @@ def llm_output_to_add_task_request(
                 unit_type="exp_add_powder",
                 unit_column=col_idx,
                 unit_row=row_idx,
-                unit_id=f"unit-{hex(unit_id_base+col_idx)[2:]}",
+                unit_id=generate_unit_id(),
                 process_json=process_json,
             )
             layout_list.append(layout_item)
@@ -510,7 +771,7 @@ def llm_output_to_add_task_request(
                         unit_type="exp_add_powder",
                         unit_column=col_idx,
                         unit_row=len(substances),
-                        unit_id=f"unit-{str(uuid.uuid4())[:8]}",
+                        unit_id=generate_unit_id(),
                         process_json=process_json_flux,
                     )
                 )
