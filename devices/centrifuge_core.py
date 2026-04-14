@@ -279,15 +279,15 @@ class CentrifugeController(ModbusControlledDevice):
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def set_time(self, time: int):
-        """设置时间，单位：分钟"""
+        """设置时间，单位：秒"""
         #if not self.is_connected:
         #    self.result = {"status": "error", "message": "设备未连接"}
         #    self.status = DeviceStatus.DISCONNECTED
         #    return self.result
         result = self.send_raw(self.build_write_command(0x2102, time))
         if result.get("status") == "success":
-            self.message = f"设置时间成功: {time} 分钟"
-            self.result = {"status": "success", "message": f"设置时间成功: {time} 分钟"}
+            self.message = f"设置时间成功: {time} 秒"
+            self.result = {"status": "success", "message": f"设置时间成功: {time} 秒"}
             self.status = DeviceStatus.RUNNING
             return self.result
         else:
