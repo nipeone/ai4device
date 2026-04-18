@@ -621,7 +621,7 @@ class ExperimentOrchestrator:
                         )
                     return
                 self._set_phase(ExperimentPhase.WAITING_SEAL_CONFIRM, "配料已完成，等待熔封确认")
-                logger.log("等待熔封完成，请调用 POST /api/experiment/flux/confirm_seal", "WARN")
+                logger.log("等待熔封完成，请调用 POST /api/experiment/confirm_seal", "WARN")
                 self._seal_confirm.clear()
                 if not self._wait_confirm_or_stop(self._seal_confirm, self._confirm_timeout):
                     if self._stop_requested:
@@ -639,7 +639,7 @@ class ExperimentOrchestrator:
                     self._set_phase(ExperimentPhase.IDLE, error_message="用户停止实验")
                     return
                 self._set_phase(ExperimentPhase.WAITING_THERMAL_LOAD, "请将样品放入加热炉后调用 confirm_thermal_load")
-                logger.log("等待加热炉上料确认，请调用 POST /api/experiment/flux/confirm_thermal_load", "WARN")
+                logger.log("等待加热炉上料确认，请调用 POST /api/experiment/confirm_thermal_load", "WARN")
                 self._thermal_load_confirm.clear()
                 if not self._wait_confirm_or_stop(self._thermal_load_confirm, self._confirm_timeout):
                     if self._stop_requested:
@@ -842,7 +842,7 @@ class ExperimentOrchestrator:
                 if not use_multi_oven:
                     self._set_phase(ExperimentPhase.WAITING_XRD_READY, "热处理已完成，等待XRD上样")
                     logger.log(
-                        "请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready",
+                        "请将样品放入XRD试验台后调用 POST /api/experiment/confirm_xrd_ready",
                         "WARN",
                     )
 
@@ -862,7 +862,7 @@ class ExperimentOrchestrator:
             if not use_multi_oven or start_from_phase == ExperimentPhase.WAITING_XRD_READY:
                 if start_from_phase == ExperimentPhase.WAITING_XRD_READY:
                     self._set_phase(ExperimentPhase.WAITING_XRD_READY, "热处理已完成，等待XRD上样（恢复流程）")
-                    logger.log("请将样品放入XRD试验台后调用 POST /api/experiment/flux/confirm_xrd_ready", "WARN")
+                    logger.log("请将样品放入XRD试验台后调用 POST /api/experiment/confirm_xrd_ready", "WARN")
                     self._xrd_ready_confirm.clear()
                     if not self._wait_confirm_or_stop(self._xrd_ready_confirm, self._confirm_timeout):
                         if self._stop_requested:
