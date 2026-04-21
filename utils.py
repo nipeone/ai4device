@@ -9,7 +9,7 @@ import os
 import time
 from functools import wraps
 from typing import Callable, Dict, Any
-
+from logger import sys_logger as logger
 
 import config
 
@@ -31,13 +31,16 @@ def initialize_oven_curve_db():
     """初始化数据库表结构"""
     if not os.path.exists(config.FURNACE_DB_PATH):
         os.makedirs(os.path.dirname(config.FURNACE_DB_PATH), exist_ok=True)
-        with sqlite3.connect(config.FURNACE_DB_PATH) as conn:
-            conn.execute('''CREATE TABLE IF NOT EXISTS saved_curves (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                curve_name TEXT NOT NULL,
-                slave_id INTEGER,
-                points_json TEXT, 
-                save_time DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        try:
+            with sqlite3.connect(config.FURNACE_DB_PATH) as conn:
+                conn.execute('''CREATE TABLE IF NOT EXISTS saved_curves (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    curve_name TEXT NOT NULL,
+                    slave_id INTEGER,
+                    points_json TEXT, 
+                    save_time DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+        except Exception as e:
+            logger.error(f"初始化炉子运行曲线数据库表结构失败: {str(e)}")
 
 def retry_on_failure(
     max_retries: int = 2,

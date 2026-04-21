@@ -119,13 +119,18 @@ def set_oven_curve(request: OvenCurveRequest) -> OvenCurveResponse:
     result = oven_controller.set_curve_points(request.oven_id, processed_points)
 
     # 3. 自主选择保存逻辑
-    if result.get("status") == "success" and request.curve_name:
-        oven_service.persist_oven_curve(request.oven_id, request.curve_name, processed_points)
-
-    if result.get("status") != "success":
-        return OvenCurveResponse(code=500, message=result.get("message", "未知错误"))
+    if result.get("status") == "success":
+        if request.curve_name and request.curve_name.strip():
+            save_status = oven_service.persist_oven_curve(request.oven_id, request.curve_name, processed_points)
+            if save_status:
+                return OvenCurveResponse(code=200, message=f"炉子运行曲线设置成功，且已保存为工艺: {request.curve_name}", data=processed_points)
+            else:
+                return OvenCurveResponse(code=200, message="曲线设置成功，但数据库保存失败，请检查后端日志", data=processed_points)
+        else:
+            # 用户没填名字，只下发不保存
+            return OvenCurveResponse(code=200, message="炉子运行曲线设置成功", data=processed_points)
     else:
-        return OvenCurveResponse(code=200, message="炉子运行曲线设置成功", data=processed_points)
+        return OvenCurveResponse(code=500, message=result.get("message", "硬件下传未知错误"))
 
 @router.get("/curve", tags=["炉子"], response_model=OvenCurveListResponse)
 def get_oven_curve_list() -> OvenCurveListResponse:

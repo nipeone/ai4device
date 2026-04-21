@@ -404,11 +404,13 @@ class OvenController(SocketControlledDevice):
         realtime_map = self.get_realtime_data(duration=10.0)
         device_list = self.get_device_list()
         summary_result = []
+
         for device in device_list:
             sid = int(device.get('SlaveID') or device.get('SlaveId') or device.get('ID') or 0)
             name = device.get('DeviceName') or f"Slave{sid}"
             dtype = device.get('DeviceType') or ""
             rt_data = realtime_map.get(sid)
+
             item = {
                 "设备名称": name, 
                 "设备地址": sid,
@@ -416,23 +418,36 @@ class OvenController(SocketControlledDevice):
                 "在线状态": "离线",
                 "实际温度": None, 
                 "设定温度": None, 
+                "运行曲线": "-",
                 "状态显示": "无数据",
                 "结束时间": "-", 
                 "状态": None
             }
             if rt_data:
+                # 1. 获取包含结束时间的详细信息
                 device_info = self.get_specific_device_info(sid)
                 item["运行曲线"] = device_info.get('CurrentRunName') or device_info.get('CurrentRun') or device_info.get('CurrentWave') or "-"
-                item["在线状态"] = "在线"
-                item["实际温度"] = rt_data['pv']
-                item["设定温度"] = rt_data['sv']
-                item["状态"] = "停止" if rt_data['status'] == 1 else "开始"
-                minutes_remaining = rt_data['runtime_raw']
-                if dtype == "858P": minutes_remaining /= 10.0
-                item["结束时间"] = (datetime.now() + timedelta(minutes=minutes_remaining)).strftime("%Y-%m-%d %H:%M") if minutes_remaining > 0 else "-"
-                item["状态显示"] = f"阶段{rt_data['step']} 剩余{minutes_remaining / 60.0:.1f}h"
+                # 2. 直接获取底层系统的最终结束时间
+                item["结束时间"] = device_info.get('EndTime') or device_info.get('StopTime') or "-"
 
-                summary_result.append(item)
+                item["在线状态"] = "在线"
+                item["实际温度"] = rt_data.get('pv')
+                item["设定温度"] = rt_data.get('sv')
+                # 3. 直接输出底层状态码
+                item["状态"] = str(rt_data.get('status', '-'))
+                
+                # 2. 修复阶段剩余时间逻辑
+                runtime_raw = rt_data.get('runtime_raw', 0)
+                hours_remaining = float(runtime_raw)
+                if dtype == "858P": 
+                    hours_remaining /= 10.0
+                
+                step = rt_data.get('step', '-')
+                # 明确显示为全局剩余小时数
+                item["状态显示"] = f"阶段{step} 剩余{hours_remaining:.1f}h"
+
+            summary_result.append(item)
+            
         return {"status": "success", "data": summary_result}
 
     def get_result(self) -> dict:
