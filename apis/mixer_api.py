@@ -24,8 +24,17 @@ def get_mixer_status():
 @router.post("/task/batch_check", tags=["配料"])
 def batch_check_task(request: BatchStartTaskRequest):
     """批量检查任务"""
+    return mixer_controller.batch_check_task(request.task_ids)
+
+@router.post("/task/batch_start", tags=["配料"])
+def batch_start_task(request: BatchStartTaskRequest):
+    """批量启动任务"""
     return mixer_controller.batch_start_task(request.task_ids)
 
+@router.post("/task/stop", tags=["配料"])
+def stop_task(task_id: int):
+    """停止任务"""
+    return mixer_controller.stop_task(task_id)
 
 @router.post("/task/delete", tags=["配料"])
 def delete_task(task_id: int):

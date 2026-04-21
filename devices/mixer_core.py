@@ -195,6 +195,7 @@ class MixerController(RestAPIControlledDevice):
             self.result = {"status": "error", "message": self.message}
             return self.result
 
+    @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def add_chemical(self, chemical_name: str) -> Dict[str, Any]:
         """
         添加化学品（AddChemical）
