@@ -1,0 +1,30 @@
+{
+  "task_id": 163,
+  "task_name": "demo-task-001",
+  "status": 0,
+  "task_begin_time": null,
+  "task_end_time": null,
+  "is_audit_log": 1,
+  "task_setup": {
+    "subtype": null,
+    "powder_100_30": false,
+    "powder_30_100": false,
+    "added_slots": ""
+  },
+  "unit_list": [
+    {
+      "resource_type": "CC10R10C",
+      "status": 0,
+      "unit_type": "exp_add_powder",
+      "unit_column": 0,
+      "unit_row": 0,
+      "unit_id": "unit-demo-0001",
+      "process_json": {
+        "substance": "Sb",
+        "chemical_id": 44,
+        "add_weight": 535.2,
+        "offset": 0.3
+      }
+    }
+  ]
+}
