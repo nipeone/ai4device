@@ -3,16 +3,16 @@
 实验后 XRD 补充测试：POST /api/experiment/{experiment_id}/xrd-supplement，与 experiment_id/sample_id 关联存储。
 
 启动实验：
-- POST /flux：入参为大模型规范输出（JSON，见 schemas/llm_output.py），
+- POST /start：入参为大模型规范输出（JSON，见 schemas/llm_output.py），
   从中提取原料 -> AddTaskRequest、温度程序 -> List[CurvePoint]，并可选炉号/数量。
-- POST /flux/from_excel：兼容旧版，上传 Excel 解析为配料任务（无温度曲线，曲线由 confirm_thermal_load 或默认提供）。
+- POST /from_excel：兼容旧版，上传 Excel 解析为配料任务（无温度曲线，曲线由 confirm_thermal_load 或默认提供）。
 
 大模型输出 -> 配方表（与 配方-0122.xlsx 结构一致，不启动实验）：
-- POST /recipe-from-llm：入参同 /flux，返回 JSON（rows 为每行配方的 name/weight_mg 列表）。
-- POST /recipe-from-llm/excel：入参同 /flux，返回 Excel 文件下载。
+- POST /recipe-from-llm：入参同 /start，返回 JSON（rows 为每行配方的 name/weight_mg 列表）。
+- POST /recipe-from-llm/excel：入参同 /start，返回 Excel 文件下载。
 
 大模型输出 -> 温度曲线（不启动实验）：
-- POST /temperature-from-llm：入参同 /flux，返回 JSON（取第一个方案的 工艺参数.温度程序 转成的 curve_points 及原始温度程序字段）。
+- POST /temperature-from-llm：入参同 /start，返回 JSON（取第一个方案的 工艺参数.温度程序 转成的 curve_points 及原始温度程序字段）。
 
 流程节点：
   配料、熔封 -> [等待熔封确认] -> 上料 -> [等待加热炉上料确认] -> 热处理 -> [等待XRD上样确认] -> XRD测试 -> 完成
@@ -296,7 +296,7 @@ def get_experiment_by_id(experiment_id: str):
 
 
 @router.post("/confirm_seal", tags=["实验"])
-def confirm_flux_seal():
+def confirm_seal():
     """人工或 Agent 确认熔封已完成，流程将继续到「等待加热炉上料」阶段。"""
     experiment_orchestrator.confirm_seal()
     return _wrap_success("熔封确认已接收，流程继续", None)
