@@ -48,6 +48,29 @@ class OvenController(SocketControlledDevice):
         self._ctrl_context = None
         self._ctrl_socket = None
 
+    def _request_once(self, payload: bytes | str, addr: str = None, timeout: int = None, expect_string: bool = True):
+        """
+        REQ短连接请求：每次命令独立创建socket并在完成后关闭
+        """
+        target_addr = addr or self.REQ_ADDR
+        req_context, req_socket = self._create_socket(zmq.REQ, timeout)
+        try:
+            req_socket.connect(target_addr)
+            if isinstance(payload, bytes):
+                req_socket.send(payload)
+            else:
+                req_socket.send_string(payload)
+            return req_socket.recv_string() if expect_string else req_socket.recv()
+        finally:
+            try:
+                req_socket.close()
+            except:
+                pass
+            try:
+                req_context.term()
+            except:
+                pass
+
     def connect(self):
         """连接ZMQ设备"""
         # 调用父类方法创建主context和socket（用于REQ操作）
@@ -115,12 +138,11 @@ class OvenController(SocketControlledDevice):
 
     def get_device_list(self):
         """获取所有设备的基础列表"""
-        if not self.is_connected or not self.socket:
+        if not self.is_connected:
             return []
         
         try:
-            self.socket.send_string("DeviceDal.GetList@@@")
-            data = json.loads(self.socket.recv_string())
+            data = json.loads(self._request_once("DeviceDal.GetList@@@", addr=self.REQ_ADDR))
             self.device_list = data if isinstance(data, list) else []
             return self.device_list
         except Exception as e:
@@ -133,12 +155,11 @@ class OvenController(SocketControlledDevice):
         获取特定设备的详细信息
         用于读取：运行曲线名称、仪表型号等详细字段
         """
-        if not self.is_connected or not self.socket:
+        if not self.is_connected:
             return {}
         
         try:
-            self.socket.send_string(f"DeviceDal.GetList@@@SlaveID = {sid}")
-            data = json.loads(self.socket.recv_string())
+            data = json.loads(self._request_once(f"DeviceDal.GetList@@@SlaveID = {sid}", addr=self.REQ_ADDR))
             if isinstance(data, list) and len(data) > 0:
                 return data[0]
             else:
@@ -221,24 +242,18 @@ class OvenController(SocketControlledDevice):
             self.result = {"status": "error", "message": "设备未连接"}
             return self.result
         
-        # CTRL socket需要独立管理，因为它连接到不同的地址
-        # 如果CTRL socket不存在或已断开，重新创建
-        if not self._ctrl_socket or not self._ctrl_context:
-            try:
-                self._ctrl_context, self._ctrl_socket = self._create_socket(zmq.REQ, 5000)  # 创建CTRL socket
-                self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
-            except Exception as e:
-                self.message = f"CTRL Socket创建失败: {str(e)}"
-                self.result = {"status": "error", "message": str(e)}
-                return self.result
-
         try:
             current_addr = 80  # 858P 固定起始地址
             for i, point in enumerate(curve_points):
                 # 温度下传 (倍率 10)
                 temp_bytes = struct.pack('>h', int(point.temperature * 10.0))
-                self._ctrl_socket.send(struct.pack("BBB", 0x01, oven_id, current_addr & 0xFF) + temp_bytes)
-                if self._ctrl_socket.recv_string() != "True":
+                temp_resp = self._request_once(
+                    struct.pack("BBB", 0x01, oven_id, current_addr & 0xFF) + temp_bytes,
+                    addr=self.CTRL_ADDR,
+                    timeout=5000,
+                    expect_string=True
+                )
+                if temp_resp != "True":
                     self.message = f"第{i + 1}段温度写入失败"
                     self.result = {"status": "error", "message": self.message}
                     return self.result
@@ -247,8 +262,13 @@ class OvenController(SocketControlledDevice):
                 # 时间下传 (倍率 10)
                 time_addr = current_addr + 1
                 time_bytes = struct.pack('>h', int(point.time * 10.0))
-                self._ctrl_socket.send(struct.pack("BBB", 0x01, oven_id, time_addr & 0xFF) + time_bytes)
-                if self._ctrl_socket.recv_string() != "True":
+                time_resp = self._request_once(
+                    struct.pack("BBB", 0x01, oven_id, time_addr & 0xFF) + time_bytes,
+                    addr=self.CTRL_ADDR,
+                    timeout=5000,
+                    expect_string=True
+                )
+                if time_resp != "True":
                     self.message = f"第{i + 1}段时间写入失败"
                     self.result = {"status": "error", "message": self.message}
                     return self.result
@@ -275,21 +295,14 @@ class OvenController(SocketControlledDevice):
             self.result = {"status": "error", "message": "设备未连接"}
             return self.result
         
-        # CTRL socket需要独立管理，因为它连接到不同的地址
-        # 如果CTRL socket不存在或已断开，重新创建
-        if not self._ctrl_socket or not self._ctrl_context:
-            try:
-                self._ctrl_context, self._ctrl_socket = self._create_socket(zmq.REQ, 3000)  # 创建CTRL socket
-                self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
-            except Exception as e:
-                self.message = f"CTRL Socket创建失败: {str(e)}"
-                self.result = {"status": "error", "message": str(e)}
-                return self.result
-        
         try:
             buffer = bytes([0x03, oven_id, 250, 0, action_code.value])
-            self._ctrl_socket.send(buffer)
-            response = self._ctrl_socket.recv_string()
+            response = self._request_once(
+                buffer,
+                addr=self.CTRL_ADDR,
+                timeout=3000,
+                expect_string=True
+            )
             success = response != "False"
             if success:
                 self.message = f"炉{oven_id}盖控制成功，动作: {action_code}"
@@ -301,19 +314,6 @@ class OvenController(SocketControlledDevice):
         except Exception as e:
             self.message = f"炉{oven_id}盖控制异常: {str(e)}"
             self.result = {"status": "error", "message": self.message}
-            # CTRL socket出错时清理，下次使用时重新创建
-            if self._ctrl_socket:
-                try:
-                    self._ctrl_socket.close()
-                except:
-                    pass
-                self._ctrl_socket = None
-            if self._ctrl_context:
-                try:
-                    self._ctrl_context.term()
-                except:
-                    pass
-                self._ctrl_context = None
             return self.result
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
@@ -331,21 +331,14 @@ class OvenController(SocketControlledDevice):
             self.result = {"status": "error", "message": self.message}
             return self.result
         
-        # CTRL socket需要独立管理，因为它连接到不同的地址
-        # 如果CTRL socket不存在或已断开，重新创建
-        if not self._ctrl_socket or not self._ctrl_context:
-            try:
-                self._ctrl_context, self._ctrl_socket = self._create_socket(zmq.REQ, 3000)  # 创建CTRL socket
-                self._ctrl_socket.connect(self.CTRL_ADDR)  # 连接到控制地址
-            except Exception as e:
-                self.message = f"CTRL Socket创建失败: {str(e)}"
-                self.result = {"status": "error", "message": self.message}
-                return self.result
-        
         try:
             packet = struct.pack("BBBBB", 0x01, oven_id, 27, 0, action_code.value)
-            self._ctrl_socket.send(packet)
-            response = self._ctrl_socket.recv_string()
+            response = self._request_once(
+                packet,
+                addr=self.CTRL_ADDR,
+                timeout=3000,
+                expect_string=True
+            )
             if response != "True":
                 self.message = f"炉{oven_id}执行{action_code}命令失败"
                 self.result = {"status": "error", "message": self.message}

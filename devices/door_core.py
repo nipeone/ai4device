@@ -22,6 +22,25 @@ class DoorController(SocketControlledDevice):
         self.door_status_cache = {}  # 缓存门状态
         self._socket_timeout = 1000  # 设置默认超时时间
 
+    def _request_once(self, payload: bytes, timeout: int = None, expect_string: bool = False):
+        """
+        REQ短连接请求：每次命令独立创建socket并在完成后关闭
+        """
+        req_context, req_socket = self._create_socket(zmq.REQ, timeout)
+        try:
+            req_socket.connect(self.target_address)
+            req_socket.send(payload)
+            return req_socket.recv_string() if expect_string else req_socket.recv()
+        finally:
+            try:
+                req_socket.close()
+            except:
+                pass
+            try:
+                req_context.term()
+            except:
+                pass
+
     def connect(self):
         """连接ZMQ设备"""
         # 调用父类方法创建context和socket
@@ -65,7 +84,7 @@ class DoorController(SocketControlledDevice):
                 True: 开启
                 False: 关闭
         """
-        if not self.is_connected or not self.socket:
+        if not self.is_connected:
             self.message = "设备未连接"
             self.result = {"status": "error", "message": self.message}
             return self.result
@@ -80,8 +99,7 @@ class DoorController(SocketControlledDevice):
         buffer = bytes([0x02, slave_id, 0, 0, 0])
 
         try:
-            self.socket.send(buffer)
-            response_bytes = self.socket.recv()
+            response_bytes = self._request_once(buffer, timeout=1000, expect_string=False)
 
             if len(response_bytes) == 2:
                 target_byte = response_bytes[1] if is_channel_1 else response_bytes[0]
@@ -114,7 +132,7 @@ class DoorController(SocketControlledDevice):
         - door_index: 门编号
         - action: "open" 开门 "close" 关门
         """
-        if not self.is_connected or not self.socket:
+        if not self.is_connected:
             self.message = "设备未连接"
             self.result = {"status": "error", "message": self.message}
             return self.result
@@ -159,8 +177,7 @@ class DoorController(SocketControlledDevice):
         buffer = bytes([0x01, slave_id, channel, 0, value])
 
         try:
-            self.socket.send(buffer)
-            frame_string = self.socket.recv_string()
+            frame_string = self._request_once(buffer, timeout=1000, expect_string=True)
             print(f"-"*10+"     "+frame_string)
 
             if frame_string == "True":

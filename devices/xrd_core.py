@@ -7,6 +7,7 @@ import socket
 import json
 import struct
 import time
+from contextlib import closing
 from typing import Dict, Any, Optional
 import threading
 
@@ -36,6 +37,12 @@ class XRDController(BaseDevice):
         self._lock = threading.RLock()
         self._sample_id = None
 
+    def _create_short_lived_socket(self) -> socket.socket:
+        """创建短连接socket（每次命令独立连接）"""
+        conn = socket.create_connection((self.host, self.port), timeout=self.socket_timeout)
+        conn.settimeout(self.socket_timeout)
+        return conn
+
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value=True)
     def _send_command(self, command: str, content: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -44,7 +51,7 @@ class XRDController(BaseDevice):
         :param content: 命令内容（可选）
         :return:
         """
-        if not self.is_connected or not self.socket:
+        if not self.is_connected:
             return {
                 "status": False,
                 "message": "设备未连接"
@@ -59,18 +66,17 @@ class XRDController(BaseDevice):
             # 序列化为JSON
             cmd_json = json.dumps(cmd_dict).encode('utf-8')
           
-            # 发送命令长度（4字节，大端序）
-            cmd_length = struct.pack('>I', len(cmd_json))
-
-            self.socket.sendall(cmd_length)
-            
-            # 发送命令数据
-            self.socket.sendall(cmd_json)
-            
-            time.sleep(0.01)
-            # 接收响应数据
-            response = self._recv_response()
-            return response
+            # 每次命令使用独立TCP短连接，降低复杂网络下僵死连接风险
+            with closing(self._create_short_lived_socket()) as conn:
+                # 发送命令长度（4字节，大端序）
+                cmd_length = struct.pack('>I', len(cmd_json))
+                conn.sendall(cmd_length)
+                # 发送命令数据
+                conn.sendall(cmd_json)
+                time.sleep(0.01)
+                # 接收响应数据
+                response = self._recv_response(conn)
+                return response
             
         except socket.timeout:
             return {
@@ -89,14 +95,14 @@ class XRDController(BaseDevice):
                 "message": f"通信错误: {str(e)}"
             }
 
-    def _recv_response(self) -> Dict[str, Any]:
+    def _recv_response(self, conn: socket.socket) -> Dict[str, Any]:
         """
         接收响应数据
         :return: 响应字典
         """
         # 接收响应长度（4字节，大端序）
         try:
-            header = self.socket.recv(4)
+            header = conn.recv(4)
             if not header:
                 return {
                     "status": False,
@@ -106,7 +112,7 @@ class XRDController(BaseDevice):
             length_bytes = struct.unpack('>I', header)[0]
             data = b''
             while len(data) < length_bytes:
-                chunk = self.socket.recv(length_bytes - len(data))
+                chunk = conn.recv(length_bytes - len(data))
                 if not chunk:
                     raise Exception("接收响应数据失败")
                 data += chunk
@@ -126,12 +132,9 @@ class XRDController(BaseDevice):
             return True
         
         try:
-            # 创建TCP Socket
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(self.socket_timeout)
-            
-            # 连接到设备
-            self.socket.connect((self.host, self.port))
+            # 短连接模式下，connect仅做一次可达性检测
+            with closing(self._create_short_lived_socket()):
+                pass
             self.is_connected = True
             self.status = DeviceStatus.CONNECTED
             logger.debug(f"connect to {self.host}:{self.port}")
@@ -155,23 +158,11 @@ class XRDController(BaseDevice):
             self.is_connected = False
             self.status = DeviceStatus.DISCONNECTED
             self.message = "XRD衍射仪连接超时"
-            if self.socket:
-                try:
-                    self.socket.close()
-                except:
-                    pass
-                self.socket = None
             return False
         except Exception as e:
             self.is_connected = False
             self.status = DeviceStatus.DISCONNECTED
             self.message = f"XRD衍射仪设备连接失败: {str(e)}"
-            if self.socket:
-                try:
-                    self.socket.close()
-                except:
-                    pass
-                self.socket = None
             return False
 
     def disconnect(self):

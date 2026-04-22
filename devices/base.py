@@ -395,11 +395,15 @@ class SocketControlledDevice(BaseDevice):
             raise ImportError("pyzmq库未安装，请运行: pip install pyzmq")
         
         socket_type = socket_type or self._socket_type
-        timeout = timeout or self._socket_timeout
+        # 允许显式传入0；仅在None时回退默认值
+        timeout = self._socket_timeout if timeout is None else timeout
         
         context = zmq.Context()
         socket = context.socket(socket_type)
         socket.setsockopt(zmq.RCVTIMEO, timeout)
+        socket.setsockopt(zmq.SNDTIMEO, timeout)
+        # 短连接场景下，未完成连接时快速失败，避免send阻塞
+        socket.setsockopt(zmq.IMMEDIATE, 1)
         socket.setsockopt(zmq.LINGER, 0)  # 关闭时不等待未发送的消息
         return context, socket
 
