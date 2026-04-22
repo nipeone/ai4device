@@ -11,7 +11,7 @@ from enum import Enum
 from logger import sys_logger as logger
 from devices.robot_core import RobotController, RobotHomeStatus, RobotSystemStatus
 from devices.door_core import DoorController
-from devices.centrifuge_core import CentrifugeController
+from devices.cent_core import CentController
 from devices.oven_core import OvenController, OvenLidActionCode, OvenActionCode
 from schemas.door import DoorActionCode, DoorStatus
 from schemas.oven import OvenStatus, CurvePoint
@@ -57,12 +57,12 @@ class ThermalFlowManager:
     """加热炉、离心机热处理工序工作流管理器"""
     def __init__(self, robot_controller: RobotController,
             door_controller: DoorController, 
-            centrifuge_controller: CentrifugeController, 
+            cent_controller: CentController, 
             oven_controller: OvenController, 
             logger=logger):
         self.robot_controller = robot_controller
         self.door_controller = door_controller
-        self.centrifuge_controller = centrifuge_controller
+        self.cent_controller = cent_controller
         self.oven_controller = oven_controller
         self.logger = logger
         self.task_queue = []
@@ -304,7 +304,7 @@ class ThermalFlowManager:
 
     #                 elif task['auto_device'] == 'cent':
     #                     self.logger.log("自动动作: 打开离心机门", "INFO")
-    #                     self.centrifuge_controller.open_door()
+    #                     self.cent_controller.open_door()
     #             except Exception as e:
     #                 self.logger.log(f"设备自动控制失败: {e}", "ERROR")
 
@@ -677,7 +677,7 @@ class ThermalFlowManager:
                 return False
 
             # 实时读取离心机状态
-            current_status = self.centrifuge_controller.get_centrifuge_status()
+            current_status = self.cent_controller.get_centrifuge_status()
             
             # 如果读到的状态是 STOPPED，说明离心机转完了
             if current_status == CentrifugeStatus.STOPPED:
@@ -696,7 +696,7 @@ class ThermalFlowManager:
         start_time = time.time()
         is_completed = False
         while self.running and time.time() - start_time < 10.0:  # 最多等10秒
-            if self.centrifuge_controller.get_centrifuge_status() == CentrifugeStatus.STOPPED:
+            if self.cent_controller.get_centrifuge_status() == CentrifugeStatus.STOPPED:
                 is_completed = True
                 break
             time.sleep(0.5)
@@ -709,7 +709,7 @@ class ThermalFlowManager:
         is_completed = False
         while self.running and time.time() - start_time < 20.0:  # 最多等20秒
             # 等待离心机门状态为指定状态才能往后执行
-            if self.centrifuge_controller.get_door_status() == status:
+            if self.cent_controller.get_door_status() == status:
                 is_completed = True
                 break
             time.sleep(0.5)
@@ -1039,7 +1039,7 @@ class ThermalFlowManager:
             return {"status": False, "message": "机器人未响应启动指令(超时10s)，任务中止"}
 
         # step5. 打开离心机门
-        result = self.centrifuge_controller.open_door()
+        result = self.cent_controller.open_door()
         if result.get("status") != "success":
             self._log_step(f"严重错误: 离心机门打开失败: {result.get('message')}", "ERROR")
             return {"status": False, "message": f"离心机门打开失败: {result.get('message')}"}
@@ -1066,7 +1066,7 @@ class ThermalFlowManager:
         self._log_step("已向PLC发送: 炉盖、玻璃门关闭确认信号 (M10.2/M10.3)", "INFO")
 
         # step9. 关闭离心机门，并等待关闭完成，这里获取状态的代码没有实现，只能等待3秒
-        result = self.centrifuge_controller.close_door()
+        result = self.cent_controller.close_door()
         if result.get("status") != "success":
             self._log_step(f"严重错误: 离心机门关闭失败: {result.get('message')}", "ERROR")
             return {"status": False, "message": f"离心机门关闭失败: {result.get('message')}"}
@@ -1110,7 +1110,7 @@ class ThermalFlowManager:
             return {"status": False, "message": "机器人未响应启动指令(超时10s)，任务中止"}
 
         # step5. 打开离心机门
-        result = self.centrifuge_controller.open_door()
+        result = self.cent_controller.open_door()
         if result.get("status") != "success":
             self._log_step(f"严重错误: 离心机门打开失败: {result.get('message')}", "ERROR")
             return {"status": False, "message": f"离心机门打开失败: {result.get('message')}"}
@@ -1137,7 +1137,7 @@ class ThermalFlowManager:
         self._log_step("已向PLC发送: 离心机关闭确认信号 (M10.4)", "INFO")
 
         # step9. 关闭离心机门，并等待关闭完成，最多等5秒
-        result = self.centrifuge_controller.close_door()
+        result = self.cent_controller.close_door()
         if result.get("status") != "success":
             self._log_step(f"严重错误: 离心机门关闭失败: {result.get('message')}", "ERROR")
             return {"status": False, "message": f"离心机门关闭失败: {result.get('message')}"}
@@ -1151,21 +1151,21 @@ class ThermalFlowManager:
         """离心机运行任务"""
         try:
             # step1. 设置时间和转速
-            result = self.centrifuge_controller.set_time(time)
+            result = self.cent_controller.set_time(time)
             if not result.get("status"):
                 self._log_step(f"严重错误: 离心机时间设置失败: {result.get('message')}", "ERROR")
                 return {"status": False, "message": f"离心机时间设置失败: {result.get('message')}"}
-            result = self.centrifuge_controller.set_speed(rpm)
+            result = self.cent_controller.set_speed(rpm)
             if not result.get("status"):
                 self._log_step(f"严重错误: 离心机转速设置失败: {result.get('message')}", "ERROR")
                 return {"status": False, "message": f"离心机转速设置失败: {result.get('message')}"}
 
             # step2. 启动离心机
             self._log_step(f"正在启动离心机...", "INFO")
-            result = self.centrifuge_controller.start()
+            result = self.cent_controller.start()
             if not result.get("status"):
                 self._log_step(f"离心机启动失败，重试: {result.get('message')}", "WARNING")
-                result = self.centrifuge_controller.start()
+                result = self.cent_controller.start()
                 if not result.get("status"):
                     self._log_step(f"离心机启动失败，重试: {result.get('message')}", "ERROR")
                     return {"status": False, "message": f"离心机启动失败: {result.get('message')}"}
@@ -1177,10 +1177,10 @@ class ThermalFlowManager:
                 self._log_step("严重错误: 离心机运行时间未完成，任务中止", "ERROR")
 
             # step4. 停止离心机，确保离心机状态已经停止
-            result = self.centrifuge_controller.stop()
+            result = self.cent_controller.stop()
             if not result.get("status"):
                 self._log_step(f"离心机停止失败，重试: {result.get('message')}", "WARNING")
-                result = self.centrifuge_controller.stop()
+                result = self.cent_controller.stop()
                 if not result.get("status"):
                     self._log_step(f"离心机停止失败，重试: {result.get('message')}", "ERROR")
             if not self._wait_for_centrifuge_stopped():
@@ -1247,7 +1247,7 @@ class ThermalFlowManager:
             return {"status": False, "message": "玻璃门连接失败"}
         if not self.oven_controller.connect():
             return {"status": False, "message": "加热炉连接失败"}
-        if not self.centrifuge_controller.connect():
+        if not self.cent_controller.connect():
             return {"status": False, "message": "离心机连接失败"}
 
         ################################################################
@@ -1282,7 +1282,7 @@ class ThermalFlowManager:
             return {"status": False, "message": "玻璃门连接失败"}
         if not self.oven_controller.connect():
             return {"status": False, "message": "加热炉连接失败"}
-        if not self.centrifuge_controller.connect():
+        if not self.cent_controller.connect():
             return {"status": False, "message": "离心机连接失败"}
 
         ################################################################
@@ -1394,7 +1394,7 @@ class ThermalFlowManager:
 
         robot_summary = self.robot_controller.get_running_status()
         oven_summary = self.oven_controller.get_running_status()
-        centrifuge_summary = self.centrifuge_controller.get_running_status()
+        centrifuge_summary = self.cent_controller.get_running_status()
 
         if oven_ids is not None and len(oven_ids) > 0 and isinstance(oven_summary.get("data"), list):
             try:
@@ -1426,12 +1426,12 @@ class ThermalFlowManager:
 from devices.mock_devices import (
     get_robot_controller,
     get_door_controller,
-    get_centrifuge_controller,
+    get_cent_controller,
     get_oven_controller,
 )
 thermal_flow_mgr = ThermalFlowManager(
     get_robot_controller(),
     get_door_controller(),
-    get_centrifuge_controller(),
+    get_cent_controller(),
     get_oven_controller(),
 )

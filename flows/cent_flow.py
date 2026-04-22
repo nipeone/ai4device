@@ -3,13 +3,13 @@ import threading
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from devices.centrifuge_core import centrifuge_controller, CentrifugeController
+from devices.cent_core import cent_controller, CentController
 from logger import sys_logger as logger
 
 class CentrifugeFlowManager:
     """离心机工序工作流管理器"""
-    def __init__(self, centrifuge_controller: CentrifugeController, logger=logger):
-        self.centrifuge_controller = centrifuge_controller
+    def __init__(self, cent_controller: CentController, logger=logger):
+        self.cent_controller = cent_controller
         self.logger = logger
         self.running = False
         self.current_step_info = "就绪"
@@ -63,20 +63,20 @@ class CentrifugeFlowManager:
     def run(self):
 
         # 1. 连接
-        success = self.centrifuge_controller.connect()
+        success = self.cent_controller.connect()
         if not success:
-            print(self.centrifuge_controller.message)
+            print(self.cent_controller.message)
             return
 
         # 2. 开盖
-        d = self.centrifuge_controller.open_door()
+        d = self.cent_controller.open_door()
         print(f"开盖结果：{d}")
 
         time.sleep(1)
 
         # 3. 检查盖状态
         # TODO
-        status = self.centrifuge_controller.get_running_status()
+        status = self.cent_controller.get_running_status()
 
         print(f"开盖后的状态：{status}")
 
@@ -84,63 +84,63 @@ class CentrifugeFlowManager:
         # TODO
 
         # 5. 关盖
-        d = self.centrifuge_controller.close_door()
+        d = self.cent_controller.close_door()
         print(f"关盖结果：{d}")
 
         time.sleep(3)
 
         # 6. 检查盖状态
         # TODO
-        status = self.centrifuge_controller.get_running_status()
+        status = self.cent_controller.get_running_status()
         print(f"关盖后的状态：{status}")
 
         # 等待离心机盖关闭才能往后执行
-        while(not self.centrifuge_controller.door_is_closed):
+        while(not self.cent_controller.door_is_closed):
             # 如果一直开着
             time.sleep(0.1)
 
 
         # 7.1 设置速度
-        self.centrifuge_controller.set_speed(500)
-        self.centrifuge_controller.set_time(120)
+        self.cent_controller.set_speed(500)
+        self.cent_controller.set_time(120)
 
         time.sleep(5)
 
-        status = self.centrifuge_controller.get_running_status()
+        status = self.cent_controller.get_running_status()
         print(f"启动前状态：{status}")
 
         # 7. 启动
-        d = self.centrifuge_controller.start()
+        d = self.cent_controller.start()
         print(f"启动结果：{d}")
 
         time.sleep(5)
 
         for _ in range(5):
-            status = self.centrifuge_controller.get_running_status()
+            status = self.cent_controller.get_running_status()
             print(f"运行中状态：{status}")
             time.sleep(2)
         
         # 8.
         time.sleep(120)
 
-        d =self.centrifuge_controller.stop()
+        d =self.cent_controller.stop()
         print(f"停止结果：{d}")
 
-        status = self.centrifuge_controller.get_running_status()
+        status = self.cent_controller.get_running_status()
         print(f"停止后状态：{status}")
 
         time.sleep(5)
-        status = self.centrifuge_controller.get_running_status()
+        status = self.cent_controller.get_running_status()
         print(f"停止后5s状态：{status}")
 
         if status["status"] == "success":
             status["data"]["run_state"]
 
         # # 9. 开盖
-        self.centrifuge_controller.open_door()
+        self.cent_controller.open_door()
 
         # # 10. 检查盖状态
-        status = self.centrifuge_controller.get_running_status()
+        status = self.cent_controller.get_running_status()
         print(f"最后的状态：{status}")
 
         # 11. 下样

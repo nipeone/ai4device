@@ -1006,12 +1006,12 @@ def get_oven_controller():
     return oven_controller
 
 
-def get_centrifuge_controller():
+def get_cent_controller():
     import config
     if getattr(config, "MOCK_DEVICES", False):
         return MockCentrifugeController()
-    from .centrifuge_core import centrifuge_controller
-    return centrifuge_controller
+    from .cent_core import cent_controller
+    return cent_controller
 
 
 def get_xrd_controller():

@@ -54,7 +54,7 @@ class CentrifugeSpeedResponse(BaseResponse):
     data: Optional[int] = Field(default=None, description="转速")
 
 class CentrifugeTimeResponse(BaseResponse):
-    data: Optional[int] = Field(default=None, description="时间，单位为分钟")
+    data: Optional[int] = Field(default=None, description="时间，单位为秒")
 
 class CentrifugeActionResponse(BaseResponse):
     data: Optional[CentrifugeActionCode] = Field(default=None, description="动作")
@@ -69,7 +69,7 @@ class CentrifugeSpeedRequest(BaseModel):
         return v
 
 class CentrifugeTimeRequest(BaseModel):
-    time: int = Field(..., description="时间，单位为分钟")
+    time: int = Field(..., description="时间，单位为秒")
 
     # @field_validator('time')
     # def validate_time(cls, v):

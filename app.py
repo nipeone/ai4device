@@ -15,7 +15,7 @@ from utils import initialize_oven_curve_db
 from services.experiment_persistence import init_experiment_db
 from devices.robot_core import robot_controller
 from devices.mixer_core import mixer_controller
-from devices.centrifuge_core import centrifuge_controller
+from devices.cent_core import cent_controller
 from devices.oven_core import oven_controller
 from devices.door_core import door_controller
 from swagger_monkey import swagger_monkey_patch, redoc_monkey_patch
@@ -38,8 +38,8 @@ async def lifespan(app: FastAPI):
             logger.log(f"机器人连接失败: {robot_controller.get_message()}", "ERROR")
         if not mixer_controller.connect():
             logger.log(f"配料设备连接失败: {mixer_controller.get_message()}", "ERROR")
-        if not centrifuge_controller.connect():
-            logger.log(f"离心机连接失败: {centrifuge_controller.get_message()}", "ERROR")
+        if not cent_controller.connect():
+            logger.log(f"离心机连接失败: {cent_controller.get_message()}", "ERROR")
         if not oven_controller.connect():
             logger.log(f"高温炉连接失败: {oven_controller.get_message()}", "ERROR")
         if not door_controller.connect():
