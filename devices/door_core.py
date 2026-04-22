@@ -32,27 +32,19 @@ class DoorController(SocketControlledDevice):
             req_socket.send(payload)
             return req_socket.recv_string() if expect_string else req_socket.recv()
         finally:
-            try:
+            if req_socket:
                 req_socket.close()
-            except:
-                pass
-            try:
+            if req_context:
                 req_context.term()
-            except:
-                pass
 
     def connect(self):
         """连接ZMQ设备"""
-        # 调用父类方法创建context和socket
         if self.is_connected:
             return True
-
-        if not super().connect():
-            return False
         
+        req_context, req_socket = self._create_socket(zmq.REQ, 1000)
         try:
-            # 连接socket到目标地址
-            # self.socket.connect(self.target_address)
+            req_socket.connect(self.target_address)
             self.is_connected = True
             self.status = DeviceStatus.CONNECTED
             self.message = "防护门设备连接成功"
@@ -64,8 +56,12 @@ class DoorController(SocketControlledDevice):
             self.is_connected = False
             self.status = DeviceStatus.DISCONNECTED
             self.message = f"防护门设备连接失败: {str(e)}"
-            self._cleanup_socket()
             return False
+        finally:
+            if req_socket:
+                req_socket.close()
+            if req_context:
+                req_context.term()
 
     def disconnect(self):
         """断开ZMQ设备连接"""
@@ -85,9 +81,10 @@ class DoorController(SocketControlledDevice):
                 False: 关闭
         """
         if not self.is_connected:
-            self.message = "设备未连接"
-            self.result = {"status": "error", "message": self.message}
-            return self.result
+            if not self.connect():
+                self.message = "设备未连接"
+                self.result = {"status": "error", "message": self.message}
+                return self.result
 
         if not (1 <= door_index <= 6):
             self.message = "无效编号"
@@ -133,9 +130,10 @@ class DoorController(SocketControlledDevice):
         - action: "open" 开门 "close" 关门
         """
         if not self.is_connected:
-            self.message = "设备未连接"
-            self.result = {"status": "error", "message": self.message}
-            return self.result
+            if not self.connect():
+                self.message = "设备未连接"
+                self.result = {"status": "error", "message": self.message}
+                return self.result
 
         if not (1 <= door_index <= 6):
             self.message = "门编号必须是 1-6"
@@ -178,7 +176,6 @@ class DoorController(SocketControlledDevice):
 
         try:
             frame_string = self._request_once(buffer, timeout=1000, expect_string=True)
-            print(f"-"*10+"     "+frame_string)
 
             if frame_string == "True":
                 self.message = f"门{door_index} {action}操作成功"

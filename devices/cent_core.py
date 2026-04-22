@@ -14,7 +14,8 @@ import config
 from schemas.centrifuge import (
     CentrifugeActionCode, 
     CentrifugeDoorStatus, 
-    CentrifugeStatus
+    CentrifugeStatus,
+    CentrifugeRotorStatus
 )
 
 '''
@@ -60,14 +61,13 @@ class CentController(SocketControlledDevice):
         if self.is_connected:
             return True
 
-        if not super().connect():
-            return False
-
+        # 短连接模式下不发送未知探测指令，connect仅做逻辑连接
+        req_context, req_socket = self._create_socket(zmq.REQ, 1000)
         try:
-            # 连接主socket到REQ地址
-            # self.socket.connect(self.REQ_ADDR)
+            
+            req_socket.connect(self.REQ_ADDR)
             logger.debug(f"成功连接离心机：{self.REQ_ADDR}")
-
+            
             self.is_connected = True
             self.message = "离心机设备连接成功"
             self.result = {"status": "success", "message": self.message}
@@ -77,9 +77,14 @@ class CentController(SocketControlledDevice):
             self.is_connected = False
             self.message = f"离心机设备连接失败: {str(e)}"
             self.result = {"status": "error", "message": self.message}
-            self.status = DeviceStatus.ERROR
+            self.status = DeviceStatus.DISCONNECTED
             return False
-    
+        finally:
+            if req_socket:
+                req_socket.close()
+            if req_context:
+                req_context.term()
+
     def disconnect(self):
         """断开ZMQ设备连接"""
         # 清理SUB socket
@@ -88,6 +93,7 @@ class CentController(SocketControlledDevice):
         super().disconnect()
         self.message = "离心机设备已断开连接"
         self.result = {"status": "success", "message": self.message}
+        self.status = DeviceStatus.DISCONNECTED
         return True
 
     def send_raw_command(self, payload: bytes, timeout_ms=1000) -> bool:
@@ -101,11 +107,13 @@ class CentController(SocketControlledDevice):
         返回:
             bool: 命令是否成功执行
         """
-        ctx = zmq.Context()
-        sock = ctx.socket(zmq.REQ)
+        if not self.is_connected and not self.connect():
+            self.message = "离心机设备未连接"
+            self.result = {"status": "error", "message": self.message}
+            return self.result
+
+        ctx, sock = self._create_socket(zmq.REQ, timeout_ms)
         sock.connect(self.REQ_ADDR)
-        sock.RCVTIMEO = timeout_ms
-        sock.LINGER = 0
         
         try:
             sock.send(payload)
@@ -146,6 +154,8 @@ class CentController(SocketControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def start(self):
         """启动离心机"""
+        # 启动离心机前需要清除故障码
+        self.clear_error()
         return self.send_raw_command(CENT_CMDS["start"])
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
@@ -155,12 +165,22 @@ class CentController(SocketControlledDevice):
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def open_door(self):
-        """打开离心机"""
+        """打开离心机门窗"""
+        realtime_data = self.get_realtime_data()
+        if realtime_data:
+            run_state = realtime_data.get("run_state", 0)
+            rotor_state = realtime_data.get("rotor_state", 0)
+
+            if run_state == CentrifugeStatus.RUNNING.value or rotor_state in [1, 2, 3]:
+                self.message = f"安全拦截: 离心机转子尚未完全静止 (机器状态码:{rotor_state})，严禁开盖！"
+                self.result = {"status": "error", "message": self.message}
+                return self.result
+
         return self.send_raw_command(CENT_CMDS["open"])
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def close_door(self):
-        """关闭离心机"""
+        """关闭离心机门窗"""
         return self.send_raw_command(CENT_CMDS["close"])
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")

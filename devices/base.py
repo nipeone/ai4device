@@ -372,8 +372,6 @@ class SocketControlledDevice(BaseDevice):
     def __init__(self, device_name: str, device_id: str, socket_address: str):
         super().__init__(device_name, "Socket", device_id)
         self.socket_address = socket_address  # Socket地址：如 "tcp://127.0.0.1:49202"
-        self.context = None  # ZMQ Context对象
-        self.socket = None  # ZMQ Socket对象
         # 默认socket类型和超时时间（延迟导入zmq）
         try:
             import zmq
@@ -409,48 +407,32 @@ class SocketControlledDevice(BaseDevice):
 
     def connect(self):
         """
-        Socket设备通用连接逻辑
-        子类应该先调用super().connect()创建context和socket，然后进行连接测试
+        Socket设备通用连接逻辑（短连接语义）
+        父类不再持有长连接资源；具体连通性探测由子类实现。
         """
         # 如果已经连接，直接返回，避免重复连接
         if self.is_connected:
             return True
         
         try:
-            # 使用_create_socket方法创建context和socket
-            self.context, self.socket = self._create_socket()
-            self.socket.connect(self.socket_address)
-            # 子类需要实现具体的连接测试逻辑
+            # 仅标记连接意图，子类可在connect中执行探活请求
+            self.is_connected = True
             return True
-        except ImportError as e:
+        except ImportError:
             self.is_connected = False
             self.message = "pyzmq库未安装"
-            self._cleanup_socket()
             return False
         except Exception as e:
             self.is_connected = False
             self.message = f"Socket设备连接失败: {str(e)}"
-            self._cleanup_socket()
             return False
 
     def _cleanup_socket(self):
-        """清理socket资源（内部方法）"""
-        if self.socket:
-            try:
-                self.socket.close()
-            except:
-                pass
-            self.socket = None
-        if self.context:
-            try:
-                self.context.term()
-            except:
-                pass
-            self.context = None
+        """兼容保留：短连接模式下无需清理持久socket资源"""
+        return
 
     def disconnect(self):
         """Socket设备通用断开逻辑"""
-        self._cleanup_socket()
         self.is_connected = False
         self.message = f"{self.device_name}已断开连接"
 

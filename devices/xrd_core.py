@@ -51,7 +51,7 @@ class XRDController(BaseDevice):
         :param content: 命令内容（可选）
         :return:
         """
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             return {
                 "status": False,
                 "message": "设备未连接"
@@ -89,7 +89,6 @@ class XRDController(BaseDevice):
                 "message": f"JSON解析失败: {str(e)}"
             }
         except Exception as e:
-            self.is_connected = False
             return {
                 "status": False,
                 "message": f"通信错误: {str(e)}"
@@ -131,29 +130,16 @@ class XRDController(BaseDevice):
         if self.is_connected:
             return True
         
+        # 短连接模式下，connect仅做一次可达性检测
+        conn = self._create_short_lived_socket()
         try:
-            # 短连接模式下，connect仅做一次可达性检测
-            with closing(self._create_short_lived_socket()):
-                pass
+
+            conn.connect((self.host, self.port))
             self.is_connected = True
             self.status = DeviceStatus.CONNECTED
             logger.debug(f"connect to {self.host}:{self.port}")
             self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
             return True
-            
-            # # 测试连接：获取设备状态
-            # # test_response = self.get_sample_status()
-            # # logger.debug(test_response)
-            # if test_response.get("status"):
-            #     self.is_connected = True
-            #     self.message = f"XRD衍射仪设备连接成功 ({self.host}:{self.port})"
-            #     return True
-            # else:
-            #     self.socket.close()
-            #     self.socket = None
-            #     self.is_connected = False
-            #     self.message = f"XRD衍射仪连接测试失败: {test_response.get('message', '未知错误')}"
-            #     return False
         except socket.timeout:
             self.is_connected = False
             self.status = DeviceStatus.DISCONNECTED
@@ -164,6 +150,9 @@ class XRDController(BaseDevice):
             self.status = DeviceStatus.DISCONNECTED
             self.message = f"XRD衍射仪设备连接失败: {str(e)}"
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def disconnect(self):
         """断开XRD衍射仪设备连接"""

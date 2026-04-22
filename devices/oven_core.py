@@ -6,7 +6,7 @@ import time
 import struct
 
 from logger import sys_logger as logger
-from .base import SocketControlledDevice
+from .base import SocketControlledDevice, DeviceStatus
 from schemas.oven import CurvePoint
 from utils import retry_on_failure
 import config
@@ -73,33 +73,32 @@ class OvenController(SocketControlledDevice):
 
     def connect(self):
         """连接ZMQ设备"""
-        # 调用父类方法创建主context和socket（用于REQ操作）
-
         if self.is_connected:
             return True
-
-        if not super().connect():
-            return False
         
+        # 短连接模式：connect仅做一次连通性探测，不持有长连接REQ socket
+        req_context, req_socket = self._create_socket(zmq.REQ, 2000)
         try:
-            # 连接主socket到REQ地址
-            # self.socket.connect(self.REQ_ADDR)
+
+            req_socket.connect(self.REQ_ADDR)  
             logger.debug(f"成功连接高温炉：{self.REQ_ADDR}")
             
-            # 测试连接：获取设备列表
-            # self.socket.send_string("DeviceDal.GetList@@@")
-            # data = json.loads(self.socket.recv_string())
-            # self.device_list = data if isinstance(data, list) else []
             self.is_connected = True
             self.message = "高温炉设备连接成功"
             self.result = {"status": "success", "message": self.message}
+            self.status = DeviceStatus.CONNECTED
             return True
         except Exception as e:
             self.is_connected = False
             self.message = f"高温炉设备连接失败: {str(e)}"
             self.result = {"status": "error", "message": self.message}
-            self._cleanup_socket()
+            self.status = DeviceStatus.DISCONNECTED
             return False
+        finally:
+            if req_socket:
+                req_socket.close()
+            if req_context:
+                req_context.term()
 
     def disconnect(self):
         """断开ZMQ设备连接"""
@@ -138,7 +137,7 @@ class OvenController(SocketControlledDevice):
 
     def get_device_list(self):
         """获取所有设备的基础列表"""
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             return []
         
         try:
@@ -155,7 +154,7 @@ class OvenController(SocketControlledDevice):
         获取特定设备的详细信息
         用于读取：运行曲线名称、仪表型号等详细字段
         """
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             return {}
         
         try:
@@ -238,7 +237,7 @@ class OvenController(SocketControlledDevice):
         :param oven_id: 炉子ID
         :param curve_points: 运行曲线点列表
         """
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             self.result = {"status": "error", "message": "设备未连接"}
             return self.result
         
@@ -291,7 +290,7 @@ class OvenController(SocketControlledDevice):
             - open=开
             - close=关
         """
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             self.result = {"status": "error", "message": "设备未连接"}
             return self.result
         
@@ -326,7 +325,7 @@ class OvenController(SocketControlledDevice):
             - stop=停止
             - pause=暂停
         """
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             self.message = "设备未连接"
             self.result = {"status": "error", "message": self.message}
             return self.result

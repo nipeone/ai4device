@@ -36,6 +36,20 @@ class CentrifugeStatus(Enum):
     STOPPED = 1
     RUNNING = 2
 
+class CentrifugeRotorStatus(Enum):
+    '''离心机转子状态
+    - UNKNOWN: 状态未知(0)
+    - ACCELERATING: 加速状态(1)
+    - CONSTANT_SPEED: 恒速状态(2)
+    - DECELERATING: 减速状态(3)
+    - LOCATION: 定位状态(4)
+    '''
+    UNKNOWN = 0
+    ACCELERATING = 1
+    CONSTANT_SPEED = 2
+    DECELERATING = 3
+    LOCATION = 4
+
 class CentrifugeSpeedResponse(BaseResponse):
     data: Optional[int] = Field(default=None, description="转速")
 
