@@ -23,6 +23,8 @@ PLC_PORT = int(os.getenv("PLC_PORT", "102"))
 CENTRIFUGE_HOST = os.getenv("CENTRIFUGE_HOST", "192.168.0.140")
 CENTRIFUGE_PORT = int(os.getenv("CENTRIFUGE_PORT", "8000"))
 CENTRIFUGE_TIMEOUT = int(os.getenv("CENTRIFUGE_TIMEOUT", "5"))
+CENTRIFUGE_SUB_ADDR = os.getenv("CENTRIFUGE_SUB_ADDR", "tcp://127.0.0.1:49203")
+CENTRIFUGE_REQ_ADDR = os.getenv("CENTRIFUGE_REQ_ADDR", "tcp://127.0.0.1:49204")
 
 # ===================== 防护门配置 =====================
 DOOR_TARGET_ADDRESS = os.getenv("DOOR_TARGET_ADDRESS", "tcp://127.0.0.1:49202")

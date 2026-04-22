@@ -173,23 +173,24 @@ class OvenController(SocketControlledDevice):
             
             start_time = time.time()
             while time.time() - start_time < duration:
-                try:
-                    parts = self._sub_socket.recv_multipart(flags=zmq.NOBLOCK)
-                    if len(parts) >= 2:
-                        data = parts[1]
-                        if len(data) >= 9:
-                            slave_id = data[0]
-                            pv = ((data[3] << 8) + data[4]) / 10.0
-                            sv = ((data[5] << 8) + data[6]) / 10.0
-                            runtime_raw = (data[7] << 8) + data[8]
-                            status = data[1]
-                            step = data[2]
-                            latest_data[slave_id] = {
-                                "pv": pv, "sv": sv, "runtime_raw": runtime_raw,
-                                "status": status, "step": step
-                            }
-                except zmq.Again:
-                    time.sleep(0.01)
+                if self._sub_socket.poll(10):
+                    try:
+                        parts = self._sub_socket.recv_multipart(flags=zmq.NOBLOCK)
+                        if len(parts) >= 2:
+                            data = parts[1]
+                            if len(data) >= 9:
+                                slave_id = data[0]
+                                pv = ((data[3] << 8) + data[4]) / 10.0
+                                sv = ((data[5] << 8) + data[6]) / 10.0
+                                runtime_raw = (data[7] << 8) + data[8]
+                                status = data[1]
+                                step = data[2]
+                                latest_data[slave_id] = {
+                                    "pv": pv, "sv": sv, "runtime_raw": runtime_raw,
+                                    "status": status, "step": step
+                                }
+                    except zmq.Again:
+                        continue
         except Exception as e:
             print(f"Oven Sub Error: {e}")
             # SUB socket出错时清理

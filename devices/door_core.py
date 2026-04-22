@@ -12,7 +12,7 @@ from logger import sys_logger as logger
 class DoorController(SocketControlledDevice):
     """Socket（ZMQ）控制的防护门设备"""
     
-    def __init__(self, device_id: str = "01", 
+    def __init__(self, device_id: str = "02", 
                 target_address: str = None):
         # 从环境变量获取配置，如果没有提供参数则使用默认值
         target_address = target_address or config.DOOR_TARGET_ADDRESS
