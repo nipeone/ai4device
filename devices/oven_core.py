@@ -13,6 +13,12 @@ import config
 
 from schemas.oven import OvenSystemStatus, OvenActionCode, OvenLidActionCode, OvenLidStatus, OvenStatus
 
+OVEN_STATUS_DISPLAY_MAP = {
+    0: "运行中",
+    1: "已停止",
+    2: "已暂停"
+}
+
 class OvenController(SocketControlledDevice):
     """Socket（ZMQ）控制的高温炉设备"""
     
@@ -206,8 +212,11 @@ class OvenController(SocketControlledDevice):
                                 status = data[1]
                                 step = data[2]
                                 latest_data[slave_id] = {
-                                    "pv": pv, "sv": sv, "runtime_raw": runtime_raw,
-                                    "status": status, "step": step
+                                    "pv": pv,
+                                    "sv": sv,
+                                    "runtime_raw": runtime_raw,
+                                    "status": status,
+                                    "step": step
                                 }
                     except zmq.Again:
                         continue
@@ -427,7 +436,7 @@ class OvenController(SocketControlledDevice):
                 item["实际温度"] = rt_data.get('pv')
                 item["设定温度"] = rt_data.get('sv')
                 # 3. 直接输出底层状态码
-                item["状态"] = str(rt_data.get('status', '-'))
+                item["状态"] = OVEN_STATUS_DISPLAY_MAP.get(rt_data.get('status'), '-')
                 
                 # 2. 修复阶段剩余时间逻辑
                 runtime_raw = rt_data.get('runtime_raw', 0)

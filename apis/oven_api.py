@@ -28,8 +28,8 @@ def control_oven_lid(request: OvenLidActionRequest):
     Args:
         oven_id: int
         action: 
-            0: open
-            1: close
+            1: open
+            2: close
     Returns:
         code: int
         message: str
@@ -45,7 +45,6 @@ def control_oven_lid(request: OvenLidActionRequest):
 @router.post("/control", tags=["炉子"])
 def control_oven(request: OvenActionRequest):
     '''控制炉子
-    
     Args:
         oven_id: int
         action: 
@@ -66,6 +65,7 @@ def control_oven(request: OvenActionRequest):
 
 @router.get("/status", tags=["炉子"], response_model=OvenStatusResponse)
 def get_oven_status() -> OvenStatusResponse:
+    '''获取所有炉子状态'''
     result = oven_controller.get_running_status()
     if result.get("status") != "success":
         return OvenStatusResponse(code=500, message=result.get("message", "未知错误"))

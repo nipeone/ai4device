@@ -56,12 +56,12 @@ class OvenSystemStatus(BaseModel):
     device_address: int = Field(..., description="设备地址")
     device_type: str = Field(..., description="仪表型号")
     online_status: str = Field(..., description="在线状态")
-    actual_temperature: float = Field(..., description="实际温度")
-    setted_temperature: float = Field(..., description="设定温度")
+    actual_temperature: Optional[float] = Field(default=None, description="实际温度")
+    setted_temperature: Optional[float] = Field(default=None, description="设定温度")
     running_curve: str = Field(..., description="运行曲线")
     status_display: str = Field(..., description="状态显示")
     end_time: str = Field(..., description="结束时间")
-    status: str = Field(..., description="运行状态")
+    status: Optional[str] = Field(default=None, description="运行状态")
 
 class OvenCurveListItem(BaseModel):
     id: int = Field(..., description="曲线ID")

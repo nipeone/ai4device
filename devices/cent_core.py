@@ -256,7 +256,7 @@ class CentController(SocketControlledDevice):
         d['setted_time'] = u16(data[18], data[19])
         # 门盖状态 1 门盖开, 2 门盖关
         d['door_lid'] = u16(data[22], data[23])
-        # 转子状态 0 unkown, 1 加速, 2 恒速, 3 减速, 4 定速
+        # 转子状态 0 unkown, 1 加速, 2 恒速, 3 减速, 4 定位
         d['rotor_state'] = u16(data[24], data[25])
         # 剩余时间
         d['remain_time'] = u16(data[26], data[27])

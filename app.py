@@ -49,6 +49,17 @@ async def lifespan(app: FastAPI):
     init_experiment_db()
     yield  # 运行应用程序
 
+    if not getattr(config, "MOCK_DEVICES", False):
+        if robot_controller.is_connected:
+            robot_controller.disconnect()
+        if mixer_controller.is_connected:
+            mixer_controller.disconnect()
+        if cent_controller.is_connected:
+            cent_controller.disconnect()
+        if oven_controller.is_connected:
+            oven_controller.disconnect()
+        if door_controller.is_connected:
+            door_controller.disconnect()
     # Shutdown
     logger.log("系统服务关闭...", "INFO")
 
