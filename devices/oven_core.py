@@ -50,9 +50,40 @@ class OvenController(SocketControlledDevice):
         # 用于SUB socket的临时context（因为SUB socket需要独立管理）
         self._sub_context = None
         self._sub_socket = None
-        # 用于CTRL socket的临时context（因为CTRL socket需要独立管理）
-        self._ctrl_context = None
-        self._ctrl_socket = None
+
+    def _cleanup_sub_socket(self):
+        """清理SUB连接资源"""
+        if self._sub_socket:
+            try:
+                self._sub_socket.close()
+            except:
+                pass
+            self._sub_socket = None
+        if self._sub_context:
+            try:
+                self._sub_context.term()
+            except:
+                pass
+            self._sub_context = None
+
+    def _ensure_sub_socket(self):
+        """
+        确保SUB socket可用
+        :return: True=可用，False=创建失败
+        """
+        if self._sub_socket and self._sub_context:
+            return True
+        try:
+            self._sub_context, self._sub_socket = self._create_socket(zmq.SUB)
+            self._sub_socket.setsockopt(zmq.SUBSCRIBE, self.SUB_TOPIC)
+            self._sub_socket.connect(self.SUB_ADDR)
+            # 让订阅建立后再进入poll，减少刚重连时的空采样窗口
+            time.sleep(0.1)
+            return True
+        except Exception as e:
+            logger.warning(f"Oven SUB socket创建失败: {e}")
+            self._cleanup_sub_socket()
+            return False
 
     def _request_once(self, payload: bytes | str, addr: str = None, timeout: int = None, expect_string: bool = True):
         """
@@ -109,32 +140,7 @@ class OvenController(SocketControlledDevice):
     def disconnect(self):
         """断开ZMQ设备连接"""
         # 清理SUB socket
-        if self._sub_socket:
-            try:
-                self._sub_socket.close()
-            except:
-                pass
-            self._sub_socket = None
-        if self._sub_context:
-            try:
-                self._sub_context.term()
-            except:
-                pass
-            self._sub_context = None
-        
-        # 清理CTRL socket
-        if self._ctrl_socket:
-            try:
-                self._ctrl_socket.close()
-            except:
-                pass
-            self._ctrl_socket = None
-        if self._ctrl_context:
-            try:
-                self._ctrl_context.term()
-            except:
-                pass
-            self._ctrl_context = None
+        self._cleanup_sub_socket()
         
         # 调用父类方法清理主socket
         super().disconnect()
@@ -179,26 +185,24 @@ class OvenController(SocketControlledDevice):
         获取实时数据 (SUB模式)
         :param duration: 搜集数据的持续时间(秒)
         """
-        if not self.is_connected:
+        # SUB实时采样允许在is_connected被动置False后自恢复，
+        # 避免REQ瞬时失败导致实时流被硬阻断。
+
+        if not self._ensure_sub_socket():
             return {}
         
-        # SUB socket需要独立管理，因为它是SUB类型，与主REQ socket不同
-        # 如果SUB socket不存在或已断开，重新创建
-        if not self._sub_socket or not self._sub_context:
-            try:
-                self._sub_context, self._sub_socket = self._create_socket(zmq.SUB)  # 创建SUB socket
-                self._sub_socket.setsockopt(zmq.SUBSCRIBE, self.SUB_TOPIC)  # 订阅主题
-                self._sub_socket.connect(self.SUB_ADDR)  # 连接到订阅地址
-            except Exception as e:
-                print(f"Oven Sub Socket创建失败: {e}")
-                return {}
-        
         latest_data = {}
-        try:
-            time.sleep(0.1)  # 等待连接建立
-            
-            start_time = time.time()
-            while time.time() - start_time < duration:
+        reconnect_count = 0
+        max_reconnects = 2
+        start_time = time.time()
+
+        while time.time() - start_time < duration:
+            if not self._sub_socket:
+                if reconnect_count >= max_reconnects or not self._ensure_sub_socket():
+                    break
+                reconnect_count += 1
+                continue
+            try:
                 if self._sub_socket.poll(10):
                     try:
                         parts = self._sub_socket.recv_multipart(flags=zmq.NOBLOCK)
@@ -220,21 +224,14 @@ class OvenController(SocketControlledDevice):
                                 }
                     except zmq.Again:
                         continue
-        except Exception as e:
-            print(f"Oven Sub Error: {e}")
-            # SUB socket出错时清理
-            if self._sub_socket:
-                try:
-                    self._sub_socket.close()
-                except:
-                    pass
-                self._sub_socket = None
-            if self._sub_context:
-                try:
-                    self._sub_context.term()
-                except:
-                    pass
-                self._sub_context = None
+            except Exception as e:
+                # 网络闪断/远端重启时，清理后在本次采样窗口内尝试重连
+                logger.warning(f"Oven SUB数据接收异常，准备重连: {e}")
+                self._cleanup_sub_socket()
+                if reconnect_count >= max_reconnects:
+                    break
+                reconnect_count += 1
+                time.sleep(0.1)
         
         self.realtime_data = latest_data
         return latest_data
