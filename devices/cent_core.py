@@ -36,10 +36,9 @@ CENT_CMDS = {
 
 # 故障和状态映射
 CENT_FAULT_MAP = {0: "系统正常", 1: "转子不平衡", 4: "伺服控制器故障", 5: "离心机门未关"}
-CENT_RUN_MAP = {0: "状态未知", 1: "已停止", 2: "运行中"}
+CENT_RUN_MAP = {0: "不定态", 1: "已停止", 2: "运行中"}
 CENT_ROTOR_MAP = {0: "不定态", 1: "加速中", 2: "恒速运行", 3: "降速中", 4: "定位中"}
-CENT_DOOR_MAP = {1: "门窗开启", 2: "门窗关闭"}
-CENT_LID_MAP = {1: "门盖开启", 2: "门盖关闭"}
+CENT_DOOR_MAP = {0: "不定态", 1: "门窗开启", 2: "门窗关闭"}
 
 class CentController(SocketControlledDevice):
     """Socket（ZMQ）控制的离心机设备"""
@@ -180,7 +179,7 @@ class CentController(SocketControlledDevice):
 
             if run_state == CentrifugeStatus.RUNNING.value or rotor_state in [1, 2, 3]:
                 self.message = f"安全拦截: 离心机转子尚未完全静止 (机器状态码:{rotor_state})，严禁开盖！"
-                self.result = {"status": "error", "message": self.message}
+                self.result = {"status": "success", "message": self.message}
                 return self.result
 
         return self.send_raw_command(CENT_CMDS["open"])
@@ -198,6 +197,8 @@ class CentController(SocketControlledDevice):
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")
     def control_centrifuge(self, action: CentrifugeActionCode) -> dict:
         """控制离心机"""
+        if action == CentrifugeActionCode.START:
+            self.clear_error()
         return self.send_raw_command(CENT_CMDS[action.name.lower()])
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value="success")

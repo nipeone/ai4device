@@ -89,7 +89,7 @@ class CentrifugeRunningStatus(BaseModel):
     door_window: str = Field(..., description="门窗状态 0: 中间状态, 1: 门窗开启, 2: 门窗关闭")
     setted_rpm: int = Field(..., description="设置转速")
     setted_time: int = Field(..., description="设置时间")
-    door_lid: str = Field(..., description="门盖状态 0: 中间状态, 1: 门盖开启, 2: 门盖关闭")
+    # door_lid: str = Field(..., description="门盖状态 0: 中间状态, 1: 门盖开启, 2: 门盖关闭")
     rotor_state: str = Field(..., description="机器状态 0: 不定态, 1: 加速中, 2: 恒速运行, 3: 降速中, 4: 定位中")
     remain_time: str = Field(..., description="剩余时间 格式: HH:MM:SS")
 

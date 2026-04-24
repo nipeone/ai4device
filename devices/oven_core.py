@@ -157,8 +157,8 @@ class OvenController(SocketControlledDevice):
             self.device_list = data if isinstance(data, list) else []
             return self.device_list
         except Exception as e:
-            # 如果socket出错，标记为未连接
-            self.is_connected = False
+            # REQ短连接模式下，单次请求失败不应直接把全局连接状态打成离线
+            logger.warning(f"Oven 获取设备列表失败: {e}")
             return []
 
     def get_specific_device_info(self, sid)->dict:
@@ -176,8 +176,7 @@ class OvenController(SocketControlledDevice):
             else:
                 return {}
         except Exception as e:
-            # 如果socket出错，标记为未连接
-            self.is_connected = False
+            logger.warning(f"Oven 获取设备[{sid}]详情失败: {e}")
             return {}
 
     def get_realtime_data(self, duration=10.0):
@@ -397,11 +396,18 @@ class OvenController(SocketControlledDevice):
 
     def get_running_status(self) -> dict:
         """获取设备运行状态"""
-        if not self.is_connected:
+        if not self.is_connected and not self.connect():
             return {"status": "error", "message": "设备未连接"}
 
         realtime_map = self.get_realtime_data(duration=10.0)
         device_list = self.get_device_list()
+        if not device_list:
+            # 首次进入或链路抖动时做一次轻量重试，降低“首帧空数据”概率
+            time.sleep(0.2)
+            device_list = self.get_device_list()
+        if not device_list and realtime_map:
+            # 兜底：设备列表短时失败时，使用实时流中的从站地址构建最小设备列表
+            device_list = [{"SlaveID": sid, "DeviceName": f"Slave{sid}", "DeviceType": ""} for sid in realtime_map.keys()]
         summary_result = []
 
         for device in device_list:

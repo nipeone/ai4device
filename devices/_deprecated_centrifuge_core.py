@@ -23,10 +23,9 @@ CENT_CMDS = {
 
 # 故障和状态映射
 CENT_FAULT_MAP = {0: "系统正常", 1: "转子不平衡", 4: "伺服控制器故障", 5: "离心机门未关"}
-CENT_RUN_MAP = {0: "状态未知", 1: "已停止", 2: "运行中"}
+CENT_RUN_MAP = {0: "不定态", 1: "已停止", 2: "运行中"}
 CENT_ROTOR_MAP = {0: "不定态", 1: "加速中", 2: "恒速运行", 3: "降速中", 4: "定位中"}
-CENT_DOOR_MAP = {1: "门窗开启", 2: "门窗关闭"}
-CENT_LID_MAP = {1: "门盖开启", 2: "门盖关闭"}
+CENT_DOOR_MAP = {0: "不定态", 1: "门窗开启", 2: "门窗关闭"}
 
 class CentrifugeController(ModbusControlledDevice):
     """Modbus控制的离心机设备"""

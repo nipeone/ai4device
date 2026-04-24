@@ -36,8 +36,8 @@ def control_door(request: DoorActionRequest) -> DoorActionResponse:
     Args:
         - door_id: int
         - action: 
-           - 0: open
-           - 1: close
+           - 1: open
+           - 2: close
 
     Returns:
         - code: int
