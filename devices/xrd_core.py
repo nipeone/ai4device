@@ -39,8 +39,9 @@ class XRDController(BaseDevice):
 
     def _create_short_lived_socket(self) -> socket.socket:
         """创建短连接socket（每次命令独立连接）"""
-        conn = socket.create_connection((self.host, self.port), timeout=self.socket_timeout)
+        conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         conn.settimeout(self.socket_timeout)
+        conn.connect((self.host, self.port))
         return conn
 
     @retry_on_failure(max_retries=3, delay=1.0, status_key="status", success_value=True)
@@ -133,8 +134,6 @@ class XRDController(BaseDevice):
         # 短连接模式下，connect仅做一次可达性检测
         conn = self._create_short_lived_socket()
         try:
-
-            conn.connect((self.host, self.port))
             self.is_connected = True
             self.status = DeviceStatus.CONNECTED
             logger.debug(f"connect to {self.host}:{self.port}")

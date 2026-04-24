@@ -112,13 +112,11 @@ class DoorController(SocketControlledDevice):
                 return self.result
 
         except zmq.Again:
-            self.is_connected = False
             self.message = "通信超时"
             self.result = {"status": "error", "message": self.message}
             return self.result
         except Exception as e:
-            # 如果socket出错，标记为未连接
-            self.is_connected = False
+            logger.warning(f"获取门{door_index}状态异常: {e}")
             self.message = f"获取门{door_index}状态异常: {str(e)}"
             self.result = {"status": "error", "message": self.message}
             return self.result
@@ -194,8 +192,7 @@ class DoorController(SocketControlledDevice):
             self.result = {"status": "error", "message": self.message}
             return self.result
         except Exception as e:
-            # 如果socket出错，标记为未连接
-            self.is_connected = False
+            logger.warning(f"门{door_index} {action}操作异常: {e}")
             self.message = f"门{door_index} {action}操作异常: {str(e)}"
             self.result = {"status": "error", "message": self.message}
             return self.result
