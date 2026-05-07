@@ -274,6 +274,8 @@ class XRDController(BaseDevice):
         else:
             self.message = response.get("message", "下样完成信号发送失败")
             self.result = response
+        with self._lock:
+            self._sample_id = None
         return response
 
     def set_power_on(self) -> Dict[str, Any]:

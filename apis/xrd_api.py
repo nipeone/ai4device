@@ -20,7 +20,7 @@ def get_xrd_status():
 
 @router.post("/realtime", tags=["xrd衍射仪"])
 def get_realtime_data():
-    '''上样请求'''
+    '''获取当前正在采集的样品实时数据，用于绘制曲线'''
     return xrd_controller.get_current_acquire_data()
 
 @router.post("/start_auto_mode", tags=["xrd衍射仪"])

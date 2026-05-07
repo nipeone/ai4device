@@ -204,7 +204,7 @@ class XRDFlowManager:
         包括：检查连接、升高压、设置检测电压电流等
         
         :param voltage: 电压值 (kV)，默认40.0
-        :param current: 电流值 (mA)，默认30.0
+        :param current: 电流值 (mA)，默认40.0
         :return: 是否成功
         """
         self._log_step("开始前期准备工作...", "INFO")
@@ -218,11 +218,11 @@ class XRDFlowManager:
         response = self.xrd_controller.start_auto_mode(True)
         if not response.get("status"):
             message = response.get("message")
-            if message != "设备已启动自动测试运行":
+            if message == "设备已启动自动测试运行" or "设备已启动自动测试运行" in message:
+                self._log_step(f"设备已启动自动测试运行，请勿重试", "WARNING")
+            else:
                 self._log_step(f"启动自动模式失败: {response.get('message')}", "ERROR")
                 return False
-            else:
-                self._log_step(f"启动自动模式失败: {response.get('message')}", "WARNING")
 
         # 3. 判断是否开启高压，如果没有开启则开启高压发生器
         self._log_step("开启高压发生器...", "INFO")
@@ -277,6 +277,11 @@ class XRDFlowManager:
         """返回错误结果"""
         self.running = False
         return {"status": False, "message": message}
+    
+    def _return_with_success(self, message: str, data: Optional[Any] = None) -> dict:
+        """返回成功结果"""
+        self.running = False
+        return {"status": True, "message": message, "data": data}
 
     def run_single_sample_test(self,
                           sample_id: str,
@@ -382,7 +387,7 @@ class XRDFlowManager:
             self._shutdown_device()
             
             self._log_step(f"单样品测试流程完成：样品ID={sample_id}", "SUCCESS")
-            return {"status": True, "message": f"单样品测试流程完成：样品ID={sample_id}", "data": self.latest_data}
+            return self._return_with_success(f"单样品测试流程完成：样品ID={sample_id}", self.latest_data)
         except Exception as e:
             return self._return_with_error(f"单样品测试流程失败: {e}")
         finally:

@@ -48,8 +48,11 @@ def start_xrd_single_sample_test(
     request: StartXRDTestRequest
 ):
     """启动xrd单样品测试流程"""
-    xrd_flow_mgr.run(True, request.sample_id, request.start_theta, request.end_theta, request.increment, request.exp_time)
-    return {"code": 200, "status": "success", "message": "xrd单样品测试流程已启动，样品{request.sample_id}测试完成"}
+    result = xrd_flow_mgr.run(True, request.sample_id, request.start_theta, request.end_theta, request.increment, request.exp_time)
+    if result.get("status"):
+        return {"code": 200, "status": "success", "message": result.get("message"), "data": result.get("data")}
+    else:
+        return {"code": 500, "status": "error", "message": result.get("message"), "data": None}
 
 @router.post("/xrd/stop", tags=["xrd衍射仪流程"])
 def stop_xrd_single_sample_test():
@@ -73,4 +76,4 @@ def get_xrd_latest_data():
     if data is not None:
         return {"code": 200, "status": "success", "message": "获取成功", "data": data}
     else:
-        return {"code": 400, "status": "error", "message": "获取失败", "data": None}
+        return {"code": 500, "status": "error", "message": "获取失败", "data": None}
