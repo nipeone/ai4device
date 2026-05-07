@@ -67,13 +67,21 @@ def confirm_xrd_test():
     当前等待提示见 GET /api/experiment/status 的 step_info。
     """
     xrd_flow_mgr.user_confirm()
-    return {"code": 200, "status": "success", "message": "完成确认", "data": None}
+    return {"code": 200, "status": "success", "message": "XRD人工上样完成确认", "data": None}
 
 @router.get("/xrd/latest", tags=["xrd衍射仪流程"])
 def get_xrd_latest_data():
-    """确认xrd单样品测试完成"""
-    data = xrd_flow_mgr.get_latest_data()
-    if data is not None:
-        return {"code": 200, "status": "success", "message": "获取成功", "data": data}
+    """xrd单样品测试完成后的最新数据"""
+    result = xrd_flow_mgr.get_latest_data()
+    if result.get("status"):
+        return {"code": 200, "status": "success", "message": result.get("message"), "data": result.get("data")}
     else:
-        return {"code": 500, "status": "error", "message": "获取失败", "data": None}
+        return {"code": 500, "status": "error", "message": result.get("message"), "data": None}
+
+@router.get("/xrd/standby ", tags=["xrd衍射仪流程"])
+def set_xrd_standby():
+    """设置xrd为待机模式
+    恢复待机模式：恢复待机模式电压电流(20.0kV, 5.0mA)、关闭高压发生器、退出自动模式
+    """
+    xrd_flow_mgr._shutdown_device()
+    return {"code": 200, "status": "success", "message": "xrd已恢复待机模式", "data": None}

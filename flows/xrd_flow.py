@@ -261,14 +261,16 @@ class XRDFlowManager:
     
     def _shutdown_device(self) -> bool:
         """
-        恢复待机模式，退出自动模式
+        恢复待机模式：恢复待机模式电压电流(20.0kV, 5.0mA)、关闭高压发生器、退出自动模式
         
         :return: 是否成功
         """
-        self._log_step("恢复待机模式，退出自动模式...", "INFO")
+        self._log_step("恢复待机模式...", "INFO")
         
         # 恢复待机模式电压电流
         self.xrd_controller.set_voltage_current(20.0, 5.0)
+        # 关闭高压发生器
+        self.xrd_controller.set_power_off()
         # 退出自动模式
         self.xrd_controller.start_auto_mode(False)
         return True
