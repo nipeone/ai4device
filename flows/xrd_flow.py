@@ -576,7 +576,7 @@ class XRDFlowManager:
                 "status": True,
                 "message": "获取数据成功",
                 "data": {
-                    "sample_id": sample_info["id_number"],
+                    "sample_id": sample_info["id_name"],
                     "theta2": sample_info["2theta"],
                     "intensity": sample_info["intensity"],
                     "timestamp": self.latest_data["timestamp"]
@@ -587,7 +587,7 @@ class XRDFlowManager:
                 "status": True,
                 "message": "获取数据成功",
                 "data": {
-                    "sample_id": self.latest_data["id_number"],
+                    "sample_id": self.latest_data["id_name"],
                     "theta2": self.latest_data["2theta"],
                     "intensity": self.latest_data["intensity"],
                     "timestamp": self.latest_data["timestamp"]

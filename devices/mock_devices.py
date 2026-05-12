@@ -426,7 +426,7 @@ class MockXRDController:
         return {
             "status": True,
             "message": "下样成功",
-            "id_number": self._sample_id,
+            "id_name": self._sample_id,
             "2theta": spec["2theta"],
             "intensity": spec["intensity"],
             "timestamp": time.time(),

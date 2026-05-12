@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from .base import BaseResponse
 
 class SampleInfo(BaseModel):
-    id_number: str = Field(..., description="样品ID")
+    id_name: str = Field(..., description="样品ID")
     theta2: List[float] = Field(..., description="2theta")
     intensity: List[float] = Field(..., description="强度")
 
@@ -20,7 +20,7 @@ class RealXRDResultResponse(BaseModel):
     status: bool = Field(..., description="状态")
     timestamp: str = Field(..., description="时间戳")
     message: Optional[str] = Field(default=None, description="消息")
-    id_number: str = Field(..., description="样品ID")
+    id_name: str = Field(..., description="样品ID")
     theta2: List[float] = Field(..., description="2theta")
     intensity: List[float] = Field(..., description="强度")
 
