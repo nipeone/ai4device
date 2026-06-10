@@ -1,5 +1,7 @@
+from typing import List
 from fastapi import APIRouter, Body
 from logger import sys_logger as logger
+from schemas.oven import CurvePoint
 
 # 导入全局实例
 from flows.thermal_flow import thermal_flow_mgr
@@ -9,11 +11,22 @@ from schemas.flow import StartXRDTestRequest
 
 router = APIRouter(prefix="/api/flow", tags=["流程"])
 
-@router.post("/thermal/confirm_continue", tags=["热处理流程"])
-def confirm_flow_continue():
-    """流程暂停时的确认继续接口"""
-    thermal_flow_mgr.user_confirm()
-    return {"code": 200, "status": "success", "message": "确认指令已发送", "data": None}
+@router.post("/thermal/run", tags=["热处理流程"])
+def run_thermal_flow(oven_id: int = Body(...), qty: int = Body(...), curve_points: List[CurvePoint] = Body(...)):
+    """启动热处理流程
+    
+    Args:
+        oven_id: 炉子ID
+        qty: 试管数量
+        curve_points: 温度曲线
+    Returns:
+        dict: 结果
+    """
+    result = thermal_flow_mgr.run(oven_id, qty, curve_points)
+    if result.get("status"):
+        return {"code": 200, "status": "success", "message": result.get("message")}
+    else:
+        return {"code": 500, "status": "error", "message": result.get("message"), "data": None}
 
 
 @router.post("/thermal/load", tags=["热处理流程"])

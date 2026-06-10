@@ -1350,10 +1350,12 @@ class ThermalFlowManager:
             #########################################################
             # 1. 上料 #
             #########################################################
-            # result = self.load(ShelfType.SHELF_1.value, oven_id, qty)
-            # if not result.get("status"):
-            #     self._log_step(f"严重错误: 上料任务失败: {result.get('message')}", "ERROR")
-            #     return self._return_with_error(f"上料任务失败: {result.get('message')}")
+            result = self.load(ShelfType.SHELF_1.value, oven_id, qty)
+            if not result.get("status"):
+                self._log_step(f"严重错误: 上料任务失败: {result.get('message')}", "ERROR")
+                return self._return_with_error(f"上料任务失败: {result.get('message')}")
+
+            self._log_step(f"上料任务完成: {result.get('message')}", "SUCCESS")
 
             #########################################################
             # 2. 燃烧 #
@@ -1368,12 +1370,12 @@ class ThermalFlowManager:
             #########################################################
             # 3. 下料 #
             #########################################################
-            # result = self.unload(oven_id, qty, ShelfType.SHELF_2.value)
-            # if not result.get("status"):
-            #     self._log_step(f"严重错误: 下料任务失败: {result.get('message')}", "ERROR")
-            #     return self._return_with_error(f"下料任务失败: {result.get('message')}")
+            result = self.unload(oven_id, qty, ShelfType.SHELF_2.value)
+            if not result.get("status"):
+                self._log_step(f"严重错误: 下料任务失败: {result.get('message')}", "ERROR")
+                return self._return_with_error(f"下料任务失败: {result.get('message')}")
 
-            # self._log_step(f"下料任务完成: {result.get('message')}", "SUCCESS")
+            self._log_step(f"下料任务完成: {result.get('message')}", "SUCCESS")
 
             return {"status": True, "message": "热处理流程完成"}
         except Exception as e:
