@@ -18,7 +18,8 @@ def run_thermal_flow(oven_id: int = Body(...), qty: int = Body(...), curve_point
     Args:
         oven_id: 炉子ID
         qty: 试管数量
-        curve_points: 温度曲线
+        curve_points: 温度曲线，单位：℃，时间单位：小时。例如：[{"temperature": 20, "time": 0.2}, {"temperature": 100, "time": 0.1}, {"temperature": 120, "time": -1}],
+        -1 表示结束，20 表示室温。经过0.2小时后，温度升到100℃，经过0.1小时后，温度升到120℃，结束。
     Returns:
         dict: 结果
     """
